@@ -1,0 +1,9 @@
+{
+    "source_s3_paths": {
+        "bronze_ratings_path": "s3://hymmrec-dilkehousebronze01/data/ml/ratings/",
+        "bronze_links_path": "s3://hymmrec-dilkehousebronze01/data/ml/links/",
+        "bronze_tmdb_path": "s3://hymmrec-dilkehousebronze01/data/tmdb/movies/",
+        "silver_posters_path": "s3://hymmrec-dilkehousesilver01/data/imv_movie_affinity/movie_posters/"
+    },
+    "target_s3_path": "s3://hymmrec-dilkehousesilver01/data/obt_movie_affinity/"
+}

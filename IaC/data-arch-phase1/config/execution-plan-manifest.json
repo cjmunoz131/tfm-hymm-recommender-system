@@ -1,0 +1,61 @@
+{
+  "workflow_execution_plan": {
+    "execution_id": "${execution-id}",
+    "pipeline_id": "${pipeline-id}",
+    "domain": "${domain}",
+    "project": "${project}",
+    "domain_project_id": "${domain-project-id}",
+    "workflow_start_time": "${workflow-start-time}",
+    "execution_type": "scheduled", 
+    "source_trigger": "scheduled_event_bridge",
+    "global_settings": {
+      "ignore_dependencies": false,
+      "max_retries": 2,
+      "notifications_enabled": false
+    },
+    "processes": [
+      {
+        "process_cod": "PRCS-EXT-011-BRNZ-002",
+        "flag_enabled": 0,
+        "description": "Flujo de ingesta de datos desde la fuente API BaseLine de TMDB hacia el data lake Bronze zone.",
+        "task_groups": [
+          {
+            "task_group_cod": "TSKG0001",
+            "task_group_priority": 1,
+            "tasks": [
+              { "task_cod": "TSK0001" }
+            ]
+          }
+        ]
+      },
+      {
+        "process_cod": "PRCS-EXT-012-SLVR-003",
+        "flag_enabled": 0,
+        "description": "Flujo de ingesta de datos desde la fuente API Poster TMDB hacia el data lake Silver zone.",
+        "task_groups": [
+          {
+            "task_group_cod": "TSKG0002",
+            "task_group_priority": 1,
+            "tasks": [
+              { "task_cod": "TSK0002" }
+            ]
+          }
+        ]
+      },
+      {
+        "process_cod": "PRCS-BRNZ-002-SLVR-003",
+        "flag_enabled": 0,
+        "description": "Flujo de ingesta de datos de tablas consolidadas para Flujo MLOps en el datalake Silver Zone",
+        "task_groups": [
+          {
+            "task_group_cod": "TSKG0003",
+            "task_group_priority": 1,
+            "tasks": [
+              { "task_cod": "TSK0003" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

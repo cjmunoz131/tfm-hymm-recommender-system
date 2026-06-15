@@ -1,0 +1,35 @@
+[
+    {
+        "Effect": "Allow",
+        "Action": [
+            "ssm:GetParameter",
+            "ssm:GetParameters"
+        ],
+        "Resource": "arn:aws:ssm:${region}:${account_id}:parameter${ssm_parameter_prefix}/*"
+    },
+        {
+        "Effect": "Allow",
+        "Action": [
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:GetItem",
+            "dynamodb:TransactWriteItems",
+            "dynamodb:Query",
+            "dynamodb:Scan"
+        ],
+        "Resource": ["${dynamodb_table_arn}", "${dynamodb_table_arn}/index/*"]
+    },
+    {
+        "Action" : [
+            "kms:Encrypt",
+            "kms:Decrypt",
+            "kms:ReEncrypt*",
+            "kms:GenerateDataKey*",
+            "kms:Describe*"
+        ],
+        "Effect" : "Allow",
+        "Resource" : [
+            "${kms_database_key_arn}"
+        ]
+    }
+]

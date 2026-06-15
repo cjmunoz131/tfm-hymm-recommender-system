@@ -1,0 +1,7 @@
+{
+    "tmdb_posters_url_template" : "https://image.tmdb.org/t/p",
+    "image_size": "w500",
+    "max_concurrency" : 20,
+    "source_s3_path" : "s3://hymmrec-dilkehousebronze01/data/tmdb/movies/",
+    "target_s3_path": "s3://hymmrec-dilkehousesilver01/data/imv_movie_affinity/movie_posters/"
+}
