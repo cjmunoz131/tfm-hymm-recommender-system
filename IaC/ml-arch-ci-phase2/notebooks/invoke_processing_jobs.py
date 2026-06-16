@@ -35,11 +35,10 @@ REGION = "us-east-1"
 ROLE = get_execution_role()
 SESSION = sagemaker.Session()
 
-# Buckets
 BRONZE_BUCKET = "hymmrec-dilkehousebronze01"
 SILVER_BUCKET = "hymmrec-dilkehousesilver01"
 GOLD_BUCKET = "hymmrec-dilkehousegold01"
-PLATINUM_BUCKET = "hymmrec-dilkhouseplatinum01"  # Para datos de entrenamiento
+PLATINUM_BUCKET = "hymmrec-sagemaker-assets"  # Para datos de entrenamiento
 
 # Paths S3 Silver (input)
 S3_SILVER_RATINGS = f"s3://{SILVER_BUCKET}/data/obt_movie_affinity/cleansed_ratings/"
@@ -47,12 +46,13 @@ S3_SILVER_MOVIES = f"s3://{SILVER_BUCKET}/data/obt_movie_affinity/cleansed_movie
 S3_SILVER_POSTERS = f"s3://{SILVER_BUCKET}/data/imv_movie_affinity/movie_posters/"
 
 # Paths S3 Gold (feature store / embeddings)
-S3_GOLD_EMBEDDINGS = f"s3://{GOLD_BUCKET}/feature-store/embeddings/"
-S3_GOLD_ENCODERS = f"s3://{GOLD_BUCKET}/feature-store/encoders/"
-S3_GOLD_FEATURES = f"s3://{GOLD_BUCKET}/feature-store/interactions/"
+S3_GOLD_EMBEDDINGS = f"s3://{GOLD_BUCKET}/data/ml_feature_store/embeddings/"
+S3_GOLD_ENCODERS = f"s3://{PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/"
+S3_GOLD_FEATURES = f"s3://{PLATINUM_BUCKET}/hymmrec/model_artefacts/interactions/"
 
 # Paths S3 Platinum (training datasets)
-S3_PLATINUM_DATASETS = f"s3://{PLATINUM_BUCKET}/datasets/"
+S3_PLATINUM_DATASETS = f"s3://{PLATINUM_BUCKET}/hymmrec/datasets/"
+
 
 # Scripts
 PROCESSING_JOB_1_SCRIPT = "processing-feature-eng-job.py"
