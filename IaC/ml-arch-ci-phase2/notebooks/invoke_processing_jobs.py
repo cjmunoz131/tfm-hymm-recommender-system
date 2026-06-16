@@ -6,14 +6,15 @@ Este script simula las celdas de un notebook para ejecutar los processing jobs
 del flujo MLOps del sistema recomendador híbrido.
 
 Flujo:
-  1. Processing Job 1: Feature Engineering + Embeddings Generation
+  1. Processing Job 1: Feature Engineering + Feature Store Ingestion
   2. Processing Job 2: Dataset Preparation (K-Core + Splits)
+  3. Processing Job 3: Multimodal Embeddings Generation (Bedrock Nova)
 
 Pre-requisitos:
   - SageMaker Execution Role con permisos a S3, Bedrock, Feature Store
   - Buckets: silver (input), gold (feature store), platinum (training data)
   - Tablas Iceberg en Silver ya materializadas por el pipeline de datos
-  - Posters descargados en Silver
+  - Posters descargados en Silver (para Job 3)
 """
 
 # ==============================================================================
@@ -74,7 +75,9 @@ import os
 local_scripts_path = "../dev/"
 s3_client = boto3.client("s3")
 
-for script in [PROCESSING_JOB_1_SCRIPT, PROCESSING_JOB_2_SCRIPT]:
+PROCESSING_JOB_3_SCRIPT = "processing-embeddings-job.py"
+
+for script in [PROCESSING_JOB_1_SCRIPT, PROCESSING_JOB_2_SCRIPT, PROCESSING_JOB_3_SCRIPT]:
     local_path = os.path.join(local_scripts_path, script)
     s3_key = f"sagemaker-scripts/{script}"
     s3_client.upload_file(local_path, GOLD_BUCKET, s3_key)
@@ -82,27 +85,24 @@ for script in [PROCESSING_JOB_1_SCRIPT, PROCESSING_JOB_2_SCRIPT]:
 
 
 # ==============================================================================
-# CELDA 3: PROCESSING JOB 1 — Feature Engineering + Embeddings
+# CELDA 3: PROCESSING JOB 1 — Feature Engineering + Feature Store
 # ==============================================================================
 # Este job:
 #   - Lee ratings + movies de Silver (Iceberg/Parquet)
 #   - Aplica Label Encoding, Multi-Hot, Rating Scaling (PySpark + sklearn)
-#   - Genera embeddings multimodales con Amazon Bedrock Nova (82K películas)
-#   - Ingesta features en Feature Store offline
-#   - Guarda embeddings_catalog.pkl + encoders.pkl en Gold
+#   - Ingesta features en Feature Store offline (Iceberg en Gold)
+#   - Guarda encoders.pkl en Gold
 
 print("=" * 60)
-print("PROCESSING JOB 1: Feature Engineering + Embeddings")
+print("PROCESSING JOB 1: Feature Engineering + Feature Store")
 print("=" * 60)
 
 # Usamos PySparkProcessor para la parte de Spark
-# La generación de embeddings (Bedrock) se ejecuta en el driver
 pyspark_processor = PySparkProcessor(
     role=ROLE,
     instance_type="ml.m5.xlarge",
-    instance_count=2,  # 1 driver + 1 worker
+    instance_count=1,
     framework_version="3.3",
-    py_version="py39",
     sagemaker_session=SESSION,
     base_job_name="hymmrec-feature-engineering",
     tags=[
@@ -117,7 +117,7 @@ pyspark_processor.run(
     submit_py_files=[],
     arguments=[
         "--region", REGION,
-        "--feature-group-name", "hymmrec-feature-interactions",
+        "--feature-group-name", "hymmrec-interactions-sm-fg",
     ],
     inputs=[
         ProcessingInput(
@@ -132,19 +132,8 @@ pyspark_processor.run(
             s3_data_type="S3Prefix",
             s3_input_mode="File",
         ),
-        ProcessingInput(
-            source=S3_SILVER_POSTERS,
-            destination="/opt/ml/processing/input/posters",
-            s3_data_type="S3Prefix",
-            s3_input_mode="File",
-        ),
     ],
     outputs=[
-        ProcessingOutput(
-            source="/opt/ml/processing/output/embeddings",
-            destination=S3_GOLD_EMBEDDINGS,
-            output_name="embeddings",
-        ),
         ProcessingOutput(
             source="/opt/ml/processing/output/encoders",
             destination=S3_GOLD_ENCODERS,
@@ -180,11 +169,6 @@ print(f"  le_user: {len(encoders['le_user'].classes_):,} usuarios")
 print(f"  le_item: {len(encoders['le_item'].classes_):,} items")
 print(f"  mlb: {len(encoders['mlb'].classes_)} géneros")
 
-# Verificar embeddings (solo tamaño)
-obj_emb = s3.Object(GOLD_BUCKET, "feature-store/embeddings/embeddings_catalog.pkl")
-emb_size_mb = obj_emb.content_length / (1024 * 1024)
-print(f"\nEmbeddings catalog: {emb_size_mb:.1f} MB")
-
 
 # ==============================================================================
 # CELDA 5: PROCESSING JOB 2 — Dataset Preparation (K-Core + Splits)
@@ -205,7 +189,6 @@ pyspark_processor_2 = PySparkProcessor(
     instance_type="ml.m5.xlarge",
     instance_count=2,
     framework_version="3.3",
-    py_version="py39",
     sagemaker_session=SESSION,
     base_job_name="hymmrec-dataset-splits",
     tags=[
@@ -258,7 +241,71 @@ print("✅ Processing Job 2 completado.")
 
 
 # ==============================================================================
-# CELDA 6: VERIFICACIÓN FINAL
+# CELDA 6: PROCESSING JOB 3 — Multimodal Embeddings (Bedrock Nova)
+# ==============================================================================
+# Este job (separado para optimizar costos):
+#   - Lee catálogo de películas (cleansed_movies) desde Silver
+#   - Descarga posters desde Silver
+#   - Genera embeddings multimodales (texto + imagen) con Amazon Bedrock Nova
+#   - Usa ThreadPoolExecutor para paralelizar invocaciones a Bedrock
+#   - Guarda embeddings_catalog.pkl en Gold
+
+print("\n" + "=" * 60)
+print("PROCESSING JOB 3: Multimodal Embeddings (Bedrock Nova)")
+print("=" * 60)
+
+# ScriptProcessor con SKLearn (no necesita Spark, es I/O bound)
+from sagemaker.sklearn.processing import SKLearnProcessor
+
+sklearn_processor = SKLearnProcessor(
+    role=ROLE,
+    instance_type="ml.t3.medium",  # I/O bound, no necesita CPU potente
+    instance_count=1,
+    framework_version="1.2-1",
+    sagemaker_session=SESSION,
+    base_job_name="hymmrec-embeddings-gen",
+    tags=[
+        {"Key": "project", "Value": "hymmrec"},
+        {"Key": "phase", "Value": "embeddings-generation"},
+    ],
+)
+
+sklearn_processor.run(
+    code=f"{local_scripts_path}/{PROCESSING_JOB_3_SCRIPT}",
+    arguments=[
+        "--region", REGION,
+        "--max-workers", "10",
+    ],
+    inputs=[
+        ProcessingInput(
+            source=S3_SILVER_MOVIES,
+            destination="/opt/ml/processing/input/movies",
+            s3_data_type="S3Prefix",
+            s3_input_mode="File",
+        ),
+        ProcessingInput(
+            source=S3_SILVER_POSTERS,
+            destination="/opt/ml/processing/input/posters",
+            s3_data_type="S3Prefix",
+            s3_input_mode="File",
+        ),
+    ],
+    outputs=[
+        ProcessingOutput(
+            source="/opt/ml/processing/output/embeddings",
+            destination=S3_GOLD_EMBEDDINGS,
+            output_name="embeddings",
+        ),
+    ],
+    logs=True,
+    wait=True,
+)
+
+print("✅ Processing Job 3 (Embeddings) completado.")
+
+
+# ==============================================================================
+# CELDA 7: VERIFICACIÓN FINAL
 # ==============================================================================
 # Listar lo que quedó en Platinum (listo para Training Job)
 
@@ -279,6 +326,11 @@ for prefix in ["train/", "val/", "test/", "cold-starts/", "encoders/", "embeddin
         print(f"  {prefix:<20} → {' | '.join(summary)}")
     else:
         print(f"  {prefix:<20} → (vacío)")
+
+# Verificar embeddings en Gold
+obj_emb = boto3.resource("s3").Object(GOLD_BUCKET, "feature-store/embeddings/embeddings_catalog.pkl")
+emb_size_mb = obj_emb.content_length / (1024 * 1024)
+print(f"\n📦 Embeddings catalog en Gold: {emb_size_mb:.1f} MB")
 
 print("\n" + "=" * 60)
 print("🎯 PRÓXIMO PASO: SageMaker Training Job")
