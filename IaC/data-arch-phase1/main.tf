@@ -314,7 +314,7 @@ module "aws_data_governance_catalog_silver_database_glue_layer_module" {
     aws.main = aws.account1
   }
   source                       = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-data-governance-catalog-database-glue"
-  catalog_database_name        = format("%s_%s_%s_%s_%s", var.project, var.governance_domain, var.movie-domain, "api_raw" , "bronze")
+  catalog_database_name        = format("%s_%s_%s_%s", var.project, var.governance_domain, var.movie-domain, "silver")
   catalog_database_description = "database in glue catalog for ${var.project}"
   parameters = {
     location             = "s3://${module.aws_storage_silver_objects_s3_bucket_layer_module.bucket_id}/data/${var.movie-domain}",
