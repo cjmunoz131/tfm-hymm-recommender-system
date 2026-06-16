@@ -209,6 +209,12 @@ variable "movie-domain" {
   default = "obt_movie_affinity"
 }
 
+variable "ml_use_case" {
+  type = string
+  description = "use case in gold layer"
+  default = "ml_feature_store"
+}
+
 #### GLUE JOBS #######
 variable "glue_assets_repository_name" {
   description = "Glue assets repository name"

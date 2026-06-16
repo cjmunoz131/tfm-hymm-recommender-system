@@ -73,24 +73,24 @@ module "aws_storage_ml_objects_s3_bucket_layer_module" {
   integrity             = "tolerable"
 }
 
-# module "sagemaker-notebook-instance" {
-#   providers = {
-#     aws.main = aws.account1
-#   }
-#   source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-environment-model-dev-compute-notebook"
-#   project = "tfm-hymm-rec"
-#   vpc_id = module.aws_networking_base_vpc_layer_module.id
-#   private_subnet_id = module.aws_networking_base_vpc_layer_module.private_subnet_id_list[0]
-#   sagemaker_instance_name = "tfm-hymm-rec-ml"
-#   sagemaker_instance_type = "ml.t3.medium"
-#   platform_identifier = "notebook-al2-v3"
-#   direct_internet_access = "Disabled"
-#   volume_size = 50
-#   target_buckets = [module.aws_storage_ml_objects_s3_bucket_layer_module.bucket_id]
-#   repo_url = "https://github.com/cjmunoz131/udacity-aws-ml-nanodegree.git"
-#   env_name = "ml-dev"
-#   python_version = "3.11"
-# }
+module "sagemaker-notebook-instance" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-environment-model-dev-compute-notebook"
+  project = "tfm-hymm-rec"
+  vpc_id = module.aws_networking_base_vpc_layer_module.id
+  private_subnet_id = module.aws_networking_base_vpc_layer_module.private_subnet_id_list[0]
+  sagemaker_instance_name = "tfm-hymm-rec-ml"
+  sagemaker_instance_type = "ml.t3.medium"
+  platform_identifier = "notebook-al2-v3"
+  direct_internet_access = "Disabled"
+  volume_size = 50
+  target_buckets = [module.aws_storage_ml_objects_s3_bucket_layer_module.bucket_id, module.aws_storage_gold_objects_s3_bucket_layer_module.bucket_id, module.aws_storage_silver_objects_s3_bucket_layer_module.bucket_id]
+  repo_url = "https://github.com/cjmunoz131/tfm-hymm-recommender-system.git"
+  env_name = "ml-dev"
+  python_version = "3.11"
+}
 
 ############################ DATALAKE ##############################
 # Creacion del bronze zone del datalake
@@ -323,6 +323,23 @@ module "aws_data_governance_catalog_silver_database_glue_layer_module" {
     data_layer           = "silver"
   }
 }
+
+### GOLD LAYER ###
+module "aws_data_governance_catalog_gold_database_glue_layer_module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source                       = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-data-governance-catalog-database-glue"
+  catalog_database_name        = format("%s_%s_%s_%s", var.project, var.governance_domain, var.ml_use_case ,"gold")
+  catalog_database_description = "database in glue catalog for ${var.project}"
+  parameters = {
+    location             = "s3://${module.aws_storage_gold_objects_s3_bucket_layer_module.bucket_id}/data/${var.ml_use_case}",
+    created_by           = "terraform"
+    environment          = terraform.workspace
+    data_layer           = "gold"
+  }
+}
+
 ### GLUE CRAWLER LAYER ###
 module "aws-data-governance-metadata-tmdb-crawler-glue-layer-module" {
   providers = {

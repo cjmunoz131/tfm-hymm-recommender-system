@@ -1,7 +1,7 @@
 variable "project" {
   type        = string
   description = "Deployment project"
-  default     = "udacity-cjmm"
+  default     = "hymmrec"
 }
 
 variable "provisioner" {
@@ -35,55 +35,39 @@ variable "region" {
 
 ########################
 
-variable "vpc_base_cidr_block" {
-  description = "VPC base CIDR block"
-  type        = string
-  default     = "10.0.0.0/16"
-}
-
-variable "vpc_name" {
-  description = "VPC name"
-  type        = string
-  default     = "olimpica-vpc"
-}
-
-variable "availability_zones" {
-  description = "List of availability zones"
-  type        = list(string)
-  default     = ["a", "b"]
-}
-
-variable "subnet_private_cidr_blocks" {
-  description = "List of private subnet CIDR blocks"
-  type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
-}
-
-variable "subnet_public_cidr_blocks" {
-  description = "List of public subnet CIDR blocks"
-  type        = list(string)
-  default     = ["10.0.3.0/24", "10.0.4.0/24"]
-}
-
-variable "subnet_database_cidr_blocks" {
-  type        = list(string)
-  description = "cidr block for vpc"
-  default     = ["10.0.5.0/24", "10.0.6.0/24"]
-}
-
-variable "execute_inference_breed_dog_classification" {
-  type        = string
-  description = "Lambda runtime"
-  default     = "exec-inf-breeddog-cls"
-}
-
-variable "lambda_runtime" {
-  type = string
-  default = "python3.11"
-}
-
-variable "integration_kms_key_name" {
+variable "storage_kms_key_id" {
   description = "value"
   type        = string
-  default     = "integration-udacity"
+  default     = "arn:aws:kms:us-east-1:697682206292:key/25b8c612-11f5-4f9e-bfa7-9d9fb69ecc64"
+}
+
+variable "offline_feature_store_table" {
+  description = "offline feature store table"
+  type = string
+  default = "hymmrec_feature_interactions"
+}
+
+variable "glue_database_name" {
+  description = "gold database name"
+  type = string
+  default = "hymmrec_tfm_ml_feature_store_gold"
+}
+
+
+variable "sagemaker_execution_role_arn" {
+  description = "sagemaker arn role"
+  type = string
+  default = "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev"
+}
+
+variable "gold_bucket_name" {
+  description = "gold bucket"
+  type = string
+  default = "hymmrec-dilkehousegold01"
+}
+
+variable "ml_use_case" {
+  type = string
+  description = "use case in gold layer"
+  default = "ml_feature_store"
 }

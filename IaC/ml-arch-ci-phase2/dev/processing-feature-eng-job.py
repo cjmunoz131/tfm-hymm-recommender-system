@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 BEDROCK_MODEL_ID = "amazon.nova-2-multimodal-embeddings-v1:0"
 BEDROCK_EMBEDDING_DIM = 1024
-FEATURE_GROUP_NAME = "hymmrec-feature-interactions"
+FEATURE_GROUP_NAME = "hymmrec-interactions-sm-fg"
 
 
 # ============================================================
@@ -199,10 +199,10 @@ def ingest_to_feature_store(df: pd.DataFrame, feature_group_name: str, region: s
                         "rating_scaled", "userId_idx", "movieId_idx"]].copy()
 
         # Event time (requerido por Feature Store)
-        df_ingest["event_time"] = pd.to_datetime(df_ingest["timestamp"], unit="s").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        df_ingest["hymmrec_eventtime_sm_et_fn"] = pd.to_datetime(df_ingest["timestamp"], unit="s").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Record identifier (compuesto)
-        df_ingest["record_id"] = df_ingest["userId"].astype(str) + "_" + df_ingest["movieId"].astype(str)
+        df_ingest["hymmrec_recordid_sm_ri_fn"] = df_ingest["userId"].astype(str) + "_" + df_ingest["movieId"].astype(str)
 
         # Tipos compatibles con Feature Store
         df_ingest["userId"] = df_ingest["userId"].astype("int64")

@@ -278,3 +278,61 @@ resource "aws_lakeformation_permissions" "sso_admin_silver_all_tables" {
     wildcard      = true
   }
 }
+
+
+# ---------------------------------------------------------------
+# SAGEMAKER ROLE — Lake Formation permisos para Feature Store (Gold)
+# ---------------------------------------------------------------
+# El rol de SageMaker necesita permisos Lake Formation sobre la DB Gold
+# para que Feature Store pueda crear/escribir tablas Iceberg.
+
+resource "aws_lakeformation_permissions" "sagemaker_gold_database" {
+  provider   = aws.account1
+  principal  = module.sagemaker-notebook-instance.sagemaker_instance_role_arn
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["DESCRIBE", "CREATE_TABLE", "ALTER"]
+
+  database {
+    name = module.aws_data_governance_catalog_gold_database_glue_layer_module.name
+  }
+}
+
+resource "aws_lakeformation_permissions" "sagemaker_gold_all_tables" {
+  provider   = aws.account1
+  principal  = module.sagemaker-notebook-instance.sagemaker_instance_role_arn
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["ALL"]
+
+  table {
+    database_name = module.aws_data_governance_catalog_gold_database_glue_layer_module.name
+    wildcard      = true
+  }
+}
+
+# También necesita leer de Silver (para los Processing Jobs que lee las tablas Iceberg)
+resource "aws_lakeformation_permissions" "sagemaker_silver_database" {
+  provider   = aws.account1
+  principal  = module.sagemaker-notebook-instance.sagemaker_instance_role_arn
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["DESCRIBE"]
+
+  database {
+    name = module.aws_data_governance_catalog_silver_database_glue_layer_module.name
+  }
+}
+
+resource "aws_lakeformation_permissions" "sagemaker_silver_all_tables" {
+  provider   = aws.account1
+  principal  = module.sagemaker-notebook-instance.sagemaker_instance_role_arn
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["SELECT", "DESCRIBE"]
+
+  table {
+    database_name = module.aws_data_governance_catalog_silver_database_glue_layer_module.name
+    wildcard      = true
+  }
+}
