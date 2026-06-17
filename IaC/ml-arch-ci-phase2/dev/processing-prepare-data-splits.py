@@ -290,8 +290,7 @@ def main():
     #copy_artifact(input_encoders, os.path.join(output_platinum, "encoders"), "encoders.pkl")
     #copy_artifact(input_embeddings, os.path.join(output_platinum, "embeddings"), "embeddings_catalog.pkl")
 
-    # Cleanup
-    spark.stop()
+    
 
     # Resumen
     duracion = round(time.time() - inicio, 2)
@@ -303,7 +302,8 @@ def main():
     logger.info(f"  Cold-starts: {df_coldstart.count():,} (descartadas por k-core)")
     logger.info(f"  Output: {output_platinum}")
     logger.info(f"{'=' * 60}")
-
+    # Cleanup
+    spark.stop()
 
 if __name__ == "__main__":
     main()
