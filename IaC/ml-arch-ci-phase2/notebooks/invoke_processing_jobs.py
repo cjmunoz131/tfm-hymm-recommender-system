@@ -171,17 +171,85 @@ print(f"  mlb: {len(encoders['mlb'].classes_)} géneros")
 
 
 # ==============================================================================
-# CELDA 5: PROCESSING JOB 2 — Dataset Preparation (K-Core + Splits)
+# CELDA 5: PROCESSING JOB 2 — Multimodal Embeddings (Bedrock Nova)
 # ==============================================================================
-# Este job:
-#   - Lee features del Feature Store offline (o fallback Parquet de Gold)
+# Este job (separado para optimizar costos):
+#   - Lee catálogo de películas (cleansed_movies) desde Silver
+#   - Descarga posters desde Silver
+#   - Genera embeddings multimodales (texto + imagen) con Amazon Bedrock Nova
+#   - Usa ThreadPoolExecutor para paralelizar invocaciones a Bedrock
+#   - Guarda embeddings_catalog.pkl en Gold
+#
+# NOTA: Este job puede correr en paralelo con Job 1 si se desea,
+#       ya que no depende de sus outputs.
+
+print("\n" + "=" * 60)
+print("PROCESSING JOB 2: Multimodal Embeddings (Bedrock Nova)")
+print("=" * 60)
+
+# ScriptProcessor con SKLearn (no necesita Spark, es I/O bound)
+from sagemaker.sklearn.processing import SKLearnProcessor
+
+sklearn_processor = SKLearnProcessor(
+    role=ROLE,
+    instance_type="ml.t3.medium",  # I/O bound, no necesita CPU potente
+    instance_count=1,
+    framework_version="1.2-1",
+    sagemaker_session=SESSION,
+    base_job_name="hymmrec-embeddings-gen",
+    tags=[
+        {"Key": "project", "Value": "hymmrec"},
+        {"Key": "phase", "Value": "embeddings-generation"},
+    ],
+)
+
+sklearn_processor.run(
+    code=f"{local_scripts_path}/{PROCESSING_JOB_3_SCRIPT}",
+    arguments=[
+        "--region", REGION,
+        "--max-workers", "10",
+    ],
+    inputs=[
+        ProcessingInput(
+            source=S3_SILVER_MOVIES,
+            destination="/opt/ml/processing/input/movies",
+            s3_data_type="S3Prefix",
+            s3_input_mode="File",
+        ),
+        ProcessingInput(
+            source=S3_SILVER_POSTERS,
+            destination="/opt/ml/processing/input/posters",
+            s3_data_type="S3Prefix",
+            s3_input_mode="File",
+        ),
+    ],
+    outputs=[
+        ProcessingOutput(
+            source="/opt/ml/processing/output/embeddings",
+            destination=S3_GOLD_EMBEDDINGS,
+            output_name="embeddings",
+        ),
+    ],
+    logs=True,
+    wait=True,
+)
+
+print("✅ Processing Job 2 (Embeddings) completado.")
+
+
+# ==============================================================================
+# CELDA 6: PROCESSING JOB 3 — Dataset Preparation (K-Core + Splits)
+# ==============================================================================
+# Este job DEBE ejecutarse DESPUÉS de Job 1 y Job 2, porque:
+#   - Lee features de Gold (output de Job 1)
+#   - Copia embeddings de Gold al Platinum (output de Job 2)
 #   - Aplica K-Core filtering (users≥20, items≥10) para eliminar ruido
 #   - Split temporal-estratificado: train 80% / val 10% / test 10%
 #   - Persiste cold-starts (datos descartados por k-core)
-#   - Copia encoders + embeddings al Platinum bucket
+#   - Al final, Platinum tiene TODO lo que necesita el Training Job
 
 print("\n" + "=" * 60)
-print("PROCESSING JOB 2: Dataset Preparation (K-Core + Splits)")
+print("PROCESSING JOB 3: Dataset Preparation (K-Core + Splits)")
 print("=" * 60)
 
 pyspark_processor_2 = PySparkProcessor(
@@ -237,71 +305,7 @@ pyspark_processor_2.run(
     wait=True,
 )
 
-print("✅ Processing Job 2 completado.")
-
-
-# ==============================================================================
-# CELDA 6: PROCESSING JOB 3 — Multimodal Embeddings (Bedrock Nova)
-# ==============================================================================
-# Este job (separado para optimizar costos):
-#   - Lee catálogo de películas (cleansed_movies) desde Silver
-#   - Descarga posters desde Silver
-#   - Genera embeddings multimodales (texto + imagen) con Amazon Bedrock Nova
-#   - Usa ThreadPoolExecutor para paralelizar invocaciones a Bedrock
-#   - Guarda embeddings_catalog.pkl en Gold
-
-print("\n" + "=" * 60)
-print("PROCESSING JOB 3: Multimodal Embeddings (Bedrock Nova)")
-print("=" * 60)
-
-# ScriptProcessor con SKLearn (no necesita Spark, es I/O bound)
-from sagemaker.sklearn.processing import SKLearnProcessor
-
-sklearn_processor = SKLearnProcessor(
-    role=ROLE,
-    instance_type="ml.t3.medium",  # I/O bound, no necesita CPU potente
-    instance_count=1,
-    framework_version="1.2-1",
-    sagemaker_session=SESSION,
-    base_job_name="hymmrec-embeddings-gen",
-    tags=[
-        {"Key": "project", "Value": "hymmrec"},
-        {"Key": "phase", "Value": "embeddings-generation"},
-    ],
-)
-
-sklearn_processor.run(
-    code=f"{local_scripts_path}/{PROCESSING_JOB_3_SCRIPT}",
-    arguments=[
-        "--region", REGION,
-        "--max-workers", "10",
-    ],
-    inputs=[
-        ProcessingInput(
-            source=S3_SILVER_MOVIES,
-            destination="/opt/ml/processing/input/movies",
-            s3_data_type="S3Prefix",
-            s3_input_mode="File",
-        ),
-        ProcessingInput(
-            source=S3_SILVER_POSTERS,
-            destination="/opt/ml/processing/input/posters",
-            s3_data_type="S3Prefix",
-            s3_input_mode="File",
-        ),
-    ],
-    outputs=[
-        ProcessingOutput(
-            source="/opt/ml/processing/output/embeddings",
-            destination=S3_GOLD_EMBEDDINGS,
-            output_name="embeddings",
-        ),
-    ],
-    logs=True,
-    wait=True,
-)
-
-print("✅ Processing Job 3 (Embeddings) completado.")
+print("✅ Processing Job 3 (Data Splits) completado.")
 
 
 # ==============================================================================
