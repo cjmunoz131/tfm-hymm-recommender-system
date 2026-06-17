@@ -287,8 +287,8 @@ def main():
     write_spark_parquet(df_coldstart, output_platinum, "cold-starts")
 
     # Copiar artefactos al Platinum (Training Job necesita todo junto)
-    copy_artifact(input_encoders, os.path.join(output_platinum, "encoders"), "encoders.pkl")
-    copy_artifact(input_embeddings, os.path.join(output_platinum, "embeddings"), "embeddings_catalog.pkl")
+    #copy_artifact(input_encoders, os.path.join(output_platinum, "encoders"), "encoders.pkl")
+    #copy_artifact(input_embeddings, os.path.join(output_platinum, "embeddings"), "embeddings_catalog.pkl")
 
     # Cleanup
     spark.stop()
