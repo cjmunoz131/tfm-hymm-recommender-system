@@ -32,7 +32,8 @@ Execution:
 import subprocess
 import sys
 
-subprocess.check_call([sys.executable, "-m", "pip", "install", "scikit-learn"])
+subprocess.check_call([sys.executable, "-m", "pip", "install","scikit-learn==1.3.2", "numpy<2", "--quiet"])
+
 
 import argparse
 import logging
