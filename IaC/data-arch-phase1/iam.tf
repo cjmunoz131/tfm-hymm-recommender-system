@@ -55,62 +55,6 @@ data "aws_iam_policy_document" "kms_key_access" {
   }
 }
 
-# 1. Definición del Documento de Confianza (Trust Policy)
-# data "aws_iam_policy_document" "sfn_assume_role" {
-#   provider = aws.account1
-#   statement {
-#     effect  = "Allow"
-#     actions = ["sts:AssumeRole"]
-
-#     principals {
-#       type        = "Service"
-#       identifiers = ["states.${data.aws_region.current.name}.amazonaws.com"]
-#     }
-#   }
-# }
-
-# # 2. Creación del Rol de IAM
-# resource "aws_iam_role" "sfn_role" {
-#   provider           = aws.account1
-#   name               = "hymmrec-master-data-pipeline-sfn-role-dev"
-#   assume_role_policy = data.aws_iam_policy_document.sfn_assume_role.json
-# }
-# # 3. Política para Logs y EventBridge (Managed Rules)
-# resource "aws_iam_policy" "sfn_internal_ops" {
-#   provider    = aws.account1
-#   name        = "hymmrec-sfn-internal-ops-policy"
-#   description = "Permisos para CloudWatch Logs y Managed Rules de EventBridge"
-
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [
-#       {
-#         # Permisos de Logs que ya tenías
-#         Effect = "Allow"
-#         Action = [
-#           "logs:CreateLogDelivery",
-#           "logs:GetLogDelivery",
-#           "logs:UpdateLogDelivery",
-#           "logs:DeleteLogDelivery",
-#           "logs:ListLogDeliveries",
-#           "logs:PutResourcePolicy",
-#           "logs:DescribeResourcePolicies",
-#           "logs:DescribeLogGroups"
-#         ]
-#         Resource = "*"
-#       }
-#     ]
-#   })
-# }
-
-# # 4. Adjuntar Políticas (Usando role_policy_attachment para evitar colisiones)
-# resource "aws_iam_role_policy_attachment" "attach_internal_ops" {
-#   provider   = aws.account1
-#   role       = aws_iam_role.sfn_role.name
-#   policy_arn = aws_iam_policy.sfn_internal_ops.arn
-# }
-
-
 # ---------------------------------------------------------------
 # SAGEMAKER ROLE — Permisos KMS Storage + Glue Catalog
 # ---------------------------------------------------------------
@@ -201,6 +145,34 @@ resource "aws_iam_role_policy" "sagemaker_s3_gold_access" {
         Resource = [
           module.aws_storage_gold_objects_s3_bucket_layer_module.bucket_arn,
           "${module.aws_storage_gold_objects_s3_bucket_layer_module.bucket_arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+
+# ---------------------------------------------------------------
+# SAGEMAKER ROLE — Invocación de Amazon Bedrock (Nova Multimodal Embeddings)
+# ---------------------------------------------------------------
+resource "aws_iam_role_policy" "sagemaker_bedrock_invoke" {
+  provider = aws.account1
+  name     = "${var.project}-sagemaker-bedrock-invoke"
+  role     = element(split("/", module.sagemaker-notebook-instance.sagemaker_instance_role_arn), length(split("/", module.sagemaker-notebook-instance.sagemaker_instance_role_arn)) - 1)
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowBedrockInvokeModel"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ]
+        Resource = [
+          "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/amazon.nova-2-multimodal-embeddings-v1:0",
+          "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/amazon.nova-*"
         ]
       }
     ]
