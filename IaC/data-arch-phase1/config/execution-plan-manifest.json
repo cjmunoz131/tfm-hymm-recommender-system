@@ -16,7 +16,7 @@
     "processes": [
       {
         "process_cod": "PRCS-EXT-011-BRNZ-002",
-        "flag_enabled": 1,
+        "flag_enabled": 0,
         "description": "Flujo de ingesta de datos desde la fuente API BaseLine de TMDB hacia el data lake Bronze zone.",
         "task_groups": [
           {
@@ -30,7 +30,7 @@
       },
       {
         "process_cod": "PRCS-EXT-012-SLVR-003",
-        "flag_enabled": 1,
+        "flag_enabled": 0,
         "description": "Flujo de ingesta de datos desde la fuente API Poster TMDB hacia el data lake Silver zone.",
         "task_groups": [
           {
@@ -44,7 +44,7 @@
       },
       {
         "process_cod": "PRCS-BRNZ-002-SLVR-003",
-        "flag_enabled": 1,
+        "flag_enabled": 0,
         "description": "Flujo de ingesta de datos de tablas consolidadas para Flujo MLOps en el datalake Silver Zone",
         "task_groups": [
           {

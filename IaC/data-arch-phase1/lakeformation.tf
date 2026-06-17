@@ -279,6 +279,34 @@ resource "aws_lakeformation_permissions" "sso_admin_silver_all_tables" {
   }
 }
 
+# ---------------------------------------------------------------
+# ACCESO SSO ADMIN — ALL sobre tablas Gold para Athena
+# ---------------------------------------------------------------
+resource "aws_lakeformation_permissions" "sso_admin_gold_database" {
+  provider   = aws.account1
+  principal  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/us-east-2/AWSReservedSSO_AdministratorAccess_cabda561aaa68976"
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["DESCRIBE", "ALTER", "CREATE_TABLE"]
+
+  database {
+    name = module.aws_data_governance_catalog_gold_database_glue_layer_module.name
+  }
+}
+
+resource "aws_lakeformation_permissions" "sso_admin_gold_all_tables" {
+  provider   = aws.account1
+  principal  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/us-east-2/AWSReservedSSO_AdministratorAccess_cabda561aaa68976"
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["ALL"]
+
+  table {
+    database_name = module.aws_data_governance_catalog_gold_database_glue_layer_module.name
+    wildcard      = true
+  }
+}
+
 
 # ---------------------------------------------------------------
 # SAGEMAKER ROLE — Lake Formation permisos para Feature Store (Gold)
