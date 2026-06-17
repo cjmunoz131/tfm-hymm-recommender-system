@@ -291,9 +291,9 @@ def main():
     logger.info(f"  Feature Group: {args.feature_group_name}")
     logger.info("=" * 60)
 
-    # Paths
-    input_ratings = "/opt/ml/processing/input/ratings"
-    input_movies = "/opt/ml/processing/input/movies"
+    # Paths (file:// prefix para que Spark lea del filesystem local, no HDFS)
+    input_ratings = "file:///opt/ml/processing/input/ratings"
+    input_movies = "file:///opt/ml/processing/input/movies"
     output_encoders = "/opt/ml/processing/output/encoders"
 
     # 1. Inicializar Spark
