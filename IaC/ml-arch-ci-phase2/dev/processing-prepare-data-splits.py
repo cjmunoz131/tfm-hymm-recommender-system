@@ -68,9 +68,14 @@ def get_spark_session() -> SparkSession:
 # 2. LECTURA DE DATOS
 # ============================================================
 def load_features(spark: SparkSession, path: str):
-    """Lee las features procesadas (Feature Store offline export)."""
+    """Lee las features procesadas (Feature Store offline export).
+    
+    Feature Store offline almacena en estructura particionada:
+      .../data/year=YYYY/month=MM/day=DD/hour=HH/*.parquet
+    Usamos recursiveFileLookup para leer todos los parquets sin conflictos de particiones.
+    """
     logger.info(f"Cargando features desde: {path}")
-    df = spark.read.parquet(path)
+    df = spark.read.option("recursiveFileLookup", "true").parquet(path)
     count = df.count()
     n_users = df.select("userId").distinct().count()
     n_items = df.select("movieId").distinct().count()
@@ -228,7 +233,7 @@ def main():
     logger.info("=" * 60)
 
     # Paths
-    input_features = "/opt/ml/processing/input/features"
+    input_features = "file:///opt/ml/processing/input/features"
     input_encoders = "/opt/ml/processing/input/encoders"
     input_embeddings = "/opt/ml/processing/input/embeddings"
     output_platinum = "/opt/ml/processing/output/platinum"
