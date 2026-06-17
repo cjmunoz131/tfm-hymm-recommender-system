@@ -243,20 +243,25 @@ print("✅ Processing Job 2 (Embeddings) completado.")
 # Este job DEBE ejecutarse DESPUÉS de Job 1 y Job 2, porque:
 #   - Lee features de Gold (output de Job 1)
 #   - Copia embeddings de Gold al Platinum (output de Job 2)
-#   - Aplica K-Core filtering (users≥20, items≥10) para eliminar ruido
+#   - Aplica filtrado de ruido (usuarios/items con pocas interacciones)
 #   - Split temporal-estratificado: train 80% / val 10% / test 10%
-#   - Persiste cold-starts (datos descartados por k-core)
+#   - Persiste cold-starts (datos descartados)
 #   - Al final, Platinum tiene TODO lo que necesita el Training Job
 
 print("\n" + "=" * 60)
-print("PROCESSING JOB 3: Dataset Preparation (K-Core + Splits)")
+print("PROCESSING JOB 3: Dataset Preparation (Filter + Splits)")
 print("=" * 60)
 
-pyspark_processor_2 = PySparkProcessor(
+PROCESSING_JOB_3_SPLITS_SCRIPT = "processing-prepare-data-splits.py"
+
+# SKLearnProcessor: simple, sin Spark, sin HDFS, sin logs excesivos
+from sagemaker.sklearn.processing import SKLearnProcessor
+
+sklearn_splits_processor = SKLearnProcessor(
     role=ROLE,
-    instance_type="ml.m5.xlarge",
-    instance_count=2,
-    framework_version="3.3",
+    instance_type="ml.m5.large",  # 8 GB RAM — suficiente para 100K-32M
+    instance_count=1,
+    framework_version="1.2-1",
     sagemaker_session=SESSION,
     base_job_name="hymmrec-dataset-splits",
     tags=[
@@ -265,13 +270,13 @@ pyspark_processor_2 = PySparkProcessor(
     ],
 )
 
-pyspark_processor_2.run(
-    submit_app=f"{local_scripts_path}/{PROCESSING_JOB_2_SCRIPT}",
-    submit_py_files=[],
+sklearn_splits_processor.run(
+    code=f"{local_scripts_path}/{PROCESSING_JOB_3_SPLITS_SCRIPT}",
     arguments=[
-        "--min-user-interactions", "20",
-        "--min-item-interactions", "10",
-        "--kcore-iterations", "5",
+        "--min-user-interactions", "5",
+        "--min-item-interactions", "5",
+        "--train-ratio", "0.80",
+        "--val-ratio", "0.10",
     ],
     inputs=[
         ProcessingInput(
@@ -280,27 +285,29 @@ pyspark_processor_2.run(
             s3_data_type="S3Prefix",
             s3_input_mode="File",
         ),
-        ProcessingInput(
-            source=S3_GOLD_ENCODERS,
-            destination="/opt/ml/processing/input/encoders",
-            s3_data_type="S3Prefix",
-            s3_input_mode="File",
-        ),
-        ProcessingInput(
-            source=S3_GOLD_EMBEDDINGS,
-            destination="/opt/ml/processing/input/embeddings",
-            s3_data_type="S3Prefix",
-            s3_input_mode="File",
-        ),
     ],
     outputs=[
         ProcessingOutput(
-            source="/opt/ml/processing/output/platinum",
-            destination=S3_PLATINUM_DATASETS,
-            output_name="platinum_datasets",
+            source="/opt/ml/processing/output/train",
+            destination=f"{S3_PLATINUM_DATASETS}train/",
+            output_name="train",
+        ),
+        ProcessingOutput(
+            source="/opt/ml/processing/output/val",
+            destination=f"{S3_PLATINUM_DATASETS}val/",
+            output_name="val",
+        ),
+        ProcessingOutput(
+            source="/opt/ml/processing/output/test",
+            destination=f"{S3_PLATINUM_DATASETS}test/",
+            output_name="test",
+        ),
+        ProcessingOutput(
+            source="/opt/ml/processing/output/cold-starts",
+            destination=f"{S3_PLATINUM_DATASETS}cold-starts/",
+            output_name="cold_starts",
         ),
     ],
-    spark_event_logs_s3_uri=f"s3://{GOLD_BUCKET}/spark-logs/job2/",
     logs=True,
     wait=True,
 )

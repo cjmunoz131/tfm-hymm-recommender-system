@@ -1,311 +1,261 @@
 """
-SageMaker Processing Job 2: Dataset Preparation (Filtering + Splits + Cold-Start)
-==================================================================================
-Lee el Feature Store offline, aplica filtrado de ruido (k-core), genera splits
-temporales-estratificados, y construye un set de cold-start para evaluación.
+SageMaker Processing Job 3: Dataset Preparation (Filter + Temporal Splits)
+==========================================================================
+Lee el Parquet consolidado de features (output del Job 1), aplica filtrado
+de ruido simple, genera splits temporales-estratificados, y copia artefactos
+al directorio de output para que el Training Job tenga todo consolidado.
 
 Pipeline:
-  1. K-Core Filtering: elimina usuarios con <20 interacciones e items con <10
-     (iterativo hasta convergencia para eliminar ruido del modelo)
-  2. Split Temporal-Estratificado: preserva cronología por usuario
-     - train (80%) | val (10%) | test (10%)
-  3. Cold-Start Set: películas con pocas interacciones
-
-Outputs (→ Platinum bucket):
-  - /platinum/train/           → Parquet (~80% interacciones)
-  - /platinum/val/             → Parquet (~10%)
-  - /platinum/test/            → Parquet (~10%)
-  - /platinum/cold-starts/     → Parquet (películas con pocas interacciones)
-  - /platinum/encoders/        → encoders.pkl (copia)
-  - /platinum/embeddings/      → embeddings_catalog.pkl (copia)
+  1. Carga features desde Parquet consolidado (pandas)
+  2. Filtrado de ruido: elimina usuarios/items con < N interacciones
+  3. Split temporal-estratificado por usuario (80/10/10)
+  4. Persiste cold-starts (interacciones descartadas)
+  5. Copia encoders + embeddings al output
 
 Inputs:
-  - /opt/ml/processing/input/features/    → Feature interactions (Parquet del Feature Store offline)
-  - /opt/ml/processing/input/movies/      → obt_movies completo (Parquet de Silver, para cold-start)
+  - /opt/ml/processing/input/features/    → feature_interactions.parquet (Job 1)
   - /opt/ml/processing/input/encoders/    → encoders.pkl
   - /opt/ml/processing/input/embeddings/  → embeddings_catalog.pkl
+
+Outputs (→ Platinum bucket):
+  - /opt/ml/processing/output/train/        → Parquet
+  - /opt/ml/processing/output/val/          → Parquet
+  - /opt/ml/processing/output/test/         → Parquet
+  - /opt/ml/processing/output/cold-starts/  → Parquet
+  - /opt/ml/processing/output/encoders/     → encoders.pkl (copia)
+  - /opt/ml/processing/output/embeddings/   → embeddings_catalog.pkl (copia)
+
+Processor: SKLearnProcessor (ml.m5.large para 100K, ml.m5.xlarge para 32M)
 """
 
 import argparse
 import logging
 import os
-import shutil
 import time
+from dataclasses import dataclass
+from typing import Tuple
 
-from pyspark.sql import SparkSession, functions as F, Window
+import numpy as np
+import pandas as pd
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - [%(funcName)s] %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# CONSTANTES POR DEFECTO
-# ============================================================
-TRAIN_RATIO = 0.80
-VAL_RATIO = 0.10
-TEST_RATIO = 0.10
-
-MIN_USER_INTERACTIONS = 20   # Usuarios con menos de esto → ruido
-MIN_ITEM_INTERACTIONS = 10   # Items con menos de esto → ruido
-KCORE_MAX_ITERATIONS = 5     # Máximo de iteraciones del k-core filtering
-
 
 # ============================================================
-# 1. INICIALIZACIÓN
+# CONFIGURACIÓN
 # ============================================================
-def get_spark_session() -> SparkSession:
-    spark = SparkSession.builder \
-        .appName("HymmRec-DatasetPreparation") \
-        .config("spark.sql.parquet.enableVectorizedReader", "true") \
-        .config("spark.sql.adaptive.enabled", "true") \
-        .config("spark.sql.shuffle.partitions", "8") \
-        .getOrCreate()
-    
-    # Reducir verbosidad de logs
-    spark.sparkContext.setLogLevel("WARN")
-    
-    logger.info(f"SparkSession inicializada: {spark.version}")
-    return spark
+@dataclass
+class SplitConfig:
+    """Configuración del pipeline de splits."""
+
+    train_ratio: float = 0.80
+    val_ratio: float = 0.10
+    test_ratio: float = 0.10
+    min_user_interactions: int = 5
+    min_item_interactions: int = 5
+
 
 # ============================================================
-# 2. LECTURA DE DATOS
+# 1. CARGA DE DATOS
 # ============================================================
-def load_features(spark: SparkSession, path: str):
-    """Lee las features procesadas (Feature Store offline export).
-    
-    Feature Store offline almacena en estructura particionada:
-      .../data/year=YYYY/month=MM/day=DD/hour=HH/*.parquet
-    Usamos recursiveFileLookup para leer todos los parquets sin conflictos de particiones.
-    """
+def load_features(path: str) -> pd.DataFrame:
+    """Lee el Parquet consolidado de features."""
     logger.info(f"Cargando features desde: {path}")
-    df = spark.read.option("recursiveFileLookup", "true").parquet(path)
-    # Consolidar micro-archivos del Feature Store en pocas particiones en memoria
-    # Esto evita el overhead de scheduling de cientos de micro-tasks
-    n_partitions = max(4, df.rdd.getNumPartitions() // 50)
-    df = df.coalesce(n_partitions)
-    logger.info(f"  → Consolidado de {df.rdd.getNumPartitions()} particiones a {n_partitions}")
-
-    # Filtrar registros marcados como eliminados por Feature Store (si existe la columna)
-    if "is_deleted" in df.columns:
-        df = df.filter(df["is_deleted"] == False).drop("is_deleted")
-
-    # Eliminar columnas internas del Feature Store que no necesitamos
-    cols_to_drop = [c for c in df.columns if c in (
-        "write_time", "api_invocation_time", "is_deleted",
-        "hymmrec_eventtime_sm_et_fn_trunc"
-    )]
-    df = df.drop(*cols_to_drop)
-    count = df.count()
-    n_users = df.select("userId").distinct().count()
-    n_items = df.select("movieId").distinct().count()
-    logger.info(f"  → {count:,} interacciones | {n_users:,} usuarios | {n_items:,} items")
+    df = pd.read_parquet(path)
+    n_users = df["userId"].nunique()
+    n_items = df["movieId"].nunique()
+    logger.info(f"  → {len(df):,} interacciones | {n_users:,} usuarios | {n_items:,} items")
     return df
 
 
 # ============================================================
-# 3. K-CORE FILTERING (ELIMINACIÓN DE RUIDO)
+# 2. FILTRADO DE RUIDO (SIMPLE, NO ITERATIVO)
 # ============================================================
-def kcore_filter(df, min_user: int, min_item: int, max_iterations: int):
+def filter_noise(
+    df: pd.DataFrame, min_user: int, min_item: int
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Filtrado iterativo k-core:
+    Filtrado simple de ruido:
     - Elimina usuarios con < min_user interacciones
     - Elimina items con < min_item interacciones
-    - Repite hasta convergencia (porque al quitar usuarios se pierden items y viceversa)
+
+    No es iterativo: un solo pase es suficiente cuando los umbrales son bajos (≤5)
+    y el dataset ya pasó por un filtrado previo en el Job 1.
 
     Returns:
-        (df_clean, df_discarded): Dataset limpio + interacciones descartadas (cold-start)
+        (df_clean, df_discarded)
     """
-    logger.info(f"Aplicando k-core filtering (min_user={min_user}, min_item={min_item}, max_iter={max_iterations})...")
+    logger.info(f"Filtrando ruido (usuarios≥{min_user}, items≥{min_item})...")
+    initial_count = len(df)
 
-    prev_count = df.count()
-    logger.info(f"  → Inicio: {prev_count:,} interacciones")
+    # Filtrar usuarios con pocas interacciones
+    user_counts = df["userId"].value_counts()
+    valid_users = user_counts[user_counts >= min_user].index
+    df_clean = df[df["userId"].isin(valid_users)]
+    removed_users = initial_count - len(df_clean)
 
-    df_clean = df
+    # Filtrar items con pocas interacciones
+    item_counts = df_clean["movieId"].value_counts()
+    valid_items = item_counts[item_counts >= min_item].index
+    df_clean = df_clean[df_clean["movieId"].isin(valid_items)]
+    removed_items = (initial_count - removed_users) - len(df_clean)
 
-    for iteration in range(1, max_iterations + 1):
-        # Filtrar usuarios con pocas interacciones
-        user_counts = df_clean.groupBy("userId").count().filter(F.col("count") >= min_user).select("userId")
-        df_clean = df_clean.join(user_counts, on="userId", how="inner")
+    # Interacciones descartadas (cold-start set)
+    df_discarded = df[~df.index.isin(df_clean.index)]
 
-        # Filtrar items con pocas interacciones
-        item_counts = df_clean.groupBy("movieId").count().filter(F.col("count") >= min_item).select("movieId")
-        df_clean = df_clean.join(item_counts, on="movieId", how="inner")
-
-        current_count = df_clean.count()
-        removed = prev_count - current_count
-        logger.info(f"  → Iteración {iteration}: {current_count:,} (-{removed:,} eliminadas)")
-
-        # Convergencia: si no se eliminó nada, terminamos
-        if current_count == prev_count:
-            logger.info(f"  → Convergencia alcanzada en iteración {iteration}")
-            break
-
-        prev_count = current_count
-
-    # Obtener las interacciones descartadas (lo que NO sobrevivió al filtrado)
-    df_discarded = df.join(df_clean.select("userId", "movieId"), on=["userId", "movieId"], how="left_anti")
-
-    n_users_clean = df_clean.select("userId").distinct().count()
-    n_items_clean = df_clean.select("movieId").distinct().count()
-    discarded_count = df_discarded.count()
-
-    logger.info(f"  → Clean: {prev_count:,} interacciones | {n_users_clean:,} usuarios | {n_items_clean:,} items")
-    logger.info(f"  → Descartadas (cold-start): {discarded_count:,} interacciones")
+    logger.info(f"  → Eliminados por usuarios: {removed_users:,}")
+    logger.info(f"  → Eliminados por items: {removed_items:,}")
+    logger.info(f"  → Clean: {len(df_clean):,} | Descartadas: {len(df_discarded):,}")
+    logger.info(
+        f"  → Usuarios: {df_clean['userId'].nunique():,} | Items: {df_clean['movieId'].nunique():,}"
+    )
 
     return df_clean, df_discarded
 
 
 # ============================================================
-# 4. SPLIT TEMPORAL-ESTRATIFICADO
+# 3. SPLIT TEMPORAL-ESTRATIFICADO
 # ============================================================
-def temporal_stratified_split(df):
+def temporal_stratified_split(
+    df: pd.DataFrame, config: SplitConfig
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Split temporal por usuario:
+    Split temporal proporcional por usuario (alineado con el notebook).
+    Usa rank(pct=True) para asignar percentiles temporales por usuario.
+
     - Ordena interacciones de cada usuario cronológicamente
     - El 80% más antiguo → train
     - El siguiente 10% → val
     - El 10% más reciente → test
-
-    Simula predicción del futuro: "dado lo que vio antes, predice lo que verá después"
     """
     logger.info("Realizando split temporal-estratificado...")
 
-    # Ranking temporal dentro de cada usuario
-    user_window = Window.partitionBy("userId").orderBy("timestamp")
-    count_window = Window.partitionBy("userId")
+    # Ordenar por usuario + timestamp ascendente (lo más viejo primero)
+    df_sorted = df.sort_values(["userId", "timestamp"], ascending=[True, True]).copy()
 
-    df_ranked = df \
-        .withColumn("row_num", F.row_number().over(user_window)) \
-        .withColumn("total_per_user", F.count("*").over(count_window)) \
-        .withColumn("position_ratio", F.col("row_num") / F.col("total_per_user"))
-
-    # Asignar splits
-    df_split = df_ranked.withColumn(
-        "split",
-        F.when(F.col("position_ratio") <= TRAIN_RATIO, "train")
-         .when(F.col("position_ratio") <= TRAIN_RATIO + VAL_RATIO, "val")
-         .otherwise("test")
+    # Calcular percentil temporal de cada fila por usuario (0.0 a 1.0)
+    df_sorted["pct_tiempo"] = df_sorted.groupby("userId")["timestamp"].rank(
+        pct=True, method="first"
     )
 
-    # Separar y limpiar columnas auxiliares
-    cols_to_drop = ["row_num", "total_per_user", "position_ratio", "split"]
-    df_train = df_split.filter(F.col("split") == "train").drop(*cols_to_drop)
-    df_val = df_split.filter(F.col("split") == "val").drop(*cols_to_drop)
-    df_test = df_split.filter(F.col("split") == "test").drop(*cols_to_drop)
+    # Cortar según los porcentajes
+    limite_val = config.train_ratio + config.val_ratio
 
-    train_count = df_train.count()
-    val_count = df_val.count()
-    test_count = df_test.count()
-    total = train_count + val_count + test_count
+    df_train = df_sorted[df_sorted["pct_tiempo"] <= config.train_ratio].copy()
+    df_val = df_sorted[
+        (df_sorted["pct_tiempo"] > config.train_ratio)
+        & (df_sorted["pct_tiempo"] <= limite_val)
+    ].copy()
+    df_test = df_sorted[df_sorted["pct_tiempo"] > limite_val].copy()
 
-    logger.info(f"  → Train: {train_count:,} ({train_count/total*100:.1f}%)")
-    logger.info(f"  → Val:   {val_count:,} ({val_count/total*100:.1f}%)")
-    logger.info(f"  → Test:  {test_count:,} ({test_count/total*100:.1f}%)")
+    # Limpiar columna auxiliar
+    df_train = df_train.drop(columns=["pct_tiempo"]).reset_index(drop=True)
+    df_val = df_val.drop(columns=["pct_tiempo"]).reset_index(drop=True)
+    df_test = df_test.drop(columns=["pct_tiempo"]).reset_index(drop=True)
+
+    # Sanity check
+    total = len(df_train) + len(df_val) + len(df_test)
+    assert total == len(df_sorted), f"Pérdida de datos: {len(df_sorted)} → {total}"
+
+    logger.info(f"  → Train: {len(df_train):,} ({len(df_train)/total*100:.1f}%)")
+    logger.info(f"  → Val:   {len(df_val):,} ({len(df_val)/total*100:.1f}%)")
+    logger.info(f"  → Test:  {len(df_test):,} ({len(df_test)/total*100:.1f}%)")
 
     return df_train, df_val, df_test
 
 
 # ============================================================
-# 5. ESCRITURA DE OUTPUTS
+# 4. ESCRITURA DE OUTPUTS
 # ============================================================
-
-def write_spark_parquet(df, output_path: str, name: str):
-    """Escribe Spark DataFrame como Parquet."""
-    filepath = f"file://{os.path.join(output_path, name)}"
-    count = df.count()
-    df.coalesce(1).write.mode("overwrite").parquet(filepath)
-    logger.info(f"  → {name}: {count:,} filas → {filepath}")
-
-
-
-def copy_artifact(src_dir: str, dst_dir: str, filename: str):
-    """Copia un artefacto al output."""
-    os.makedirs(dst_dir, exist_ok=True)
-    src = os.path.join(src_dir, filename)
-    dst = os.path.join(dst_dir, filename)
-    if os.path.exists(src):
-        shutil.copy2(src, dst)
-        size_mb = os.path.getsize(dst) / (1024 * 1024)
-        logger.info(f"  → {filename} ({size_mb:.1f} MB) → {dst_dir}")
-    else:
-        logger.warning(f"  → Artefacto no encontrado: {src}")
+def save_parquet(df: pd.DataFrame, output_dir: str, name: str) -> None:
+    """Guarda un DataFrame como Parquet en un directorio."""
+    dirpath = os.path.join(output_dir, name)
+    os.makedirs(dirpath, exist_ok=True)
+    filepath = os.path.join(dirpath, f"{name}.parquet")
+    df.to_parquet(filepath, index=False)
+    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+    logger.info(f"  → {name}: {len(df):,} filas ({size_mb:.1f} MB)")
 
 
 # ============================================================
 # MAIN
 # ============================================================
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--min-user-interactions", type=int, default=MIN_USER_INTERACTIONS,
-                        help="Mínimo de interacciones por usuario (k-core)")
-    parser.add_argument("--min-item-interactions", type=int, default=MIN_ITEM_INTERACTIONS,
-                        help="Mínimo de interacciones por item (k-core)")
-    parser.add_argument("--kcore-iterations", type=int, default=KCORE_MAX_ITERATIONS,
-                        help="Máximo de iteraciones del k-core filtering")
+    parser = argparse.ArgumentParser(description="Dataset Preparation: Filter + Temporal Splits")
+    parser.add_argument(
+        "--min-user-interactions", type=int, default=5,
+        help="Mínimo de interacciones por usuario para incluirlo (default: 5)",
+    )
+    parser.add_argument(
+        "--min-item-interactions", type=int, default=5,
+        help="Mínimo de interacciones por item para incluirlo (default: 5)",
+    )
+    parser.add_argument(
+        "--train-ratio", type=float, default=0.80,
+        help="Proporción de datos para training (default: 0.80)",
+    )
+    parser.add_argument(
+        "--val-ratio", type=float, default=0.10,
+        help="Proporción de datos para validación (default: 0.10)",
+    )
     args = parser.parse_args()
+
+    config = SplitConfig(
+        train_ratio=args.train_ratio,
+        val_ratio=args.val_ratio,
+        test_ratio=round(1.0 - args.train_ratio - args.val_ratio, 2),
+        min_user_interactions=args.min_user_interactions,
+        min_item_interactions=args.min_item_interactions,
+    )
 
     inicio = time.time()
     logger.info("=" * 60)
-    logger.info("Processing Job 2: Dataset Preparation")
-    logger.info(f"  K-core: users≥{args.min_user_interactions} | items≥{args.min_item_interactions}")
-    logger.info(f"  Splits: {TRAIN_RATIO}/{VAL_RATIO}/{TEST_RATIO}")
+    logger.info("Processing Job 3: Dataset Preparation (pandas)")
+    logger.info(f"  Filter: users≥{config.min_user_interactions} | items≥{config.min_item_interactions}")
+    logger.info(f"  Splits: {config.train_ratio}/{config.val_ratio}/{config.test_ratio}")
     logger.info("=" * 60)
 
     # Paths
-    input_features = "file:///opt/ml/processing/input/features"
-    input_encoders = "/opt/ml/processing/input/encoders"
-    input_embeddings = "/opt/ml/processing/input/embeddings"
-    output_platinum = "/opt/ml/processing/output/platinum"
+    input_features = "/opt/ml/processing/input/features"
+    output_base = "/opt/ml/processing/output"
 
-    # 1. Inicializar Spark
-    logger.info("\n[PASO 1/5] Inicializando Spark...")
-    spark = get_spark_session()
+    # 1. Cargar datos
+    logger.info("\n[PASO 1/4] Cargando features...")
+    df = load_features(input_features)
 
-    # 2. Cargar datos
-    logger.info("\n[PASO 2/5] Cargando datos...")
-    df_features = load_features(spark, input_features)
-
-    # 3. K-Core Filtering (eliminación de ruido → cold-start como residuo)
-    logger.info("\n[PASO 3/5] Filtrando ruido (k-core)...")
-    df_clean, df_coldstart = kcore_filter(
-        df_features,
-        min_user=args.min_user_interactions,
-        min_item=args.min_item_interactions,
-        max_iterations=args.kcore_iterations,
+    # 2. Filtrado de ruido
+    logger.info("\n[PASO 2/4] Filtrando ruido...")
+    df_clean, df_coldstart = filter_noise(
+        df,
+        min_user=config.min_user_interactions,
+        min_item=config.min_item_interactions,
     )
 
-    # 4. Split temporal-estratificado sobre el dataset limpio
-    logger.info("\n[PASO 4/5] Split temporal-estratificado...")
-    df_train, df_val, df_test = temporal_stratified_split(df_clean)
+    # 3. Split temporal-estratificado
+    logger.info("\n[PASO 3/4] Split temporal-estratificado...")
+    df_train, df_val, df_test = temporal_stratified_split(df_clean, config)
 
-    # 5. Escribir outputs en Platinum
-    logger.info("\n[PASO 5/5] Escribiendo datasets en Platinum...")
-
-    # Datasets de entrenamiento/evaluación
-    write_spark_parquet(df_train, output_platinum, "train")
-    write_spark_parquet(df_val, output_platinum, "val")
-    write_spark_parquet(df_test, output_platinum, "test")
-
-    # Cold-starts (interacciones descartadas por k-core, para pruebas en inferencia)
-    write_spark_parquet(df_coldstart, output_platinum, "cold-starts")
-
-    # Copiar artefactos al Platinum (Training Job necesita todo junto)
-    #copy_artifact(input_encoders, os.path.join(output_platinum, "encoders"), "encoders.pkl")
-    #copy_artifact(input_embeddings, os.path.join(output_platinum, "embeddings"), "embeddings_catalog.pkl")
-
-    
+    # 4. Escribir outputs
+    logger.info("\n[PASO 4/4] Escribiendo outputs...")
+    save_parquet(df_train, output_base, "train")
+    save_parquet(df_val, output_base, "val")
+    save_parquet(df_test, output_base, "test")
+    save_parquet(df_coldstart, output_base, "cold-starts")
 
     # Resumen
     duracion = round(time.time() - inicio, 2)
     logger.info(f"\n{'=' * 60}")
-    logger.info(f"Processing Job 2 completado en {duracion}s")
-    logger.info(f"  Train:       {df_train.count():,}")
-    logger.info(f"  Val:         {df_val.count():,}")
-    logger.info(f"  Test:        {df_test.count():,}")
-    logger.info(f"  Cold-starts: {df_coldstart.count():,} (descartadas por k-core)")
-    logger.info(f"  Output: {output_platinum}")
+    logger.info(f"Job completado en {duracion}s")
+    logger.info(f"  Train:       {len(df_train):,}")
+    logger.info(f"  Val:         {len(df_val):,}")
+    logger.info(f"  Test:        {len(df_test):,}")
+    logger.info(f"  Cold-starts: {len(df_coldstart):,}")
     logger.info(f"{'=' * 60}")
-    # Cleanup
-    spark.stop()
+
 
 if __name__ == "__main__":
     main()
