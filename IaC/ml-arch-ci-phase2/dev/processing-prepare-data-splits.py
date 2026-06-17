@@ -53,16 +53,18 @@ KCORE_MAX_ITERATIONS = 5     # Máximo de iteraciones del k-core filtering
 # 1. INICIALIZACIÓN
 # ============================================================
 def get_spark_session() -> SparkSession:
-    """Inicializa SparkSession."""
     spark = SparkSession.builder \
         .appName("HymmRec-DatasetPreparation") \
         .config("spark.sql.parquet.enableVectorizedReader", "true") \
         .config("spark.sql.adaptive.enabled", "true") \
-        .config("spark.sql.shuffle.partitions", "200") \
+        .config("spark.sql.shuffle.partitions", "8") \
         .getOrCreate()
+    
+    # Reducir verbosidad de logs
+    spark.sparkContext.setLogLevel("WARN")
+    
     logger.info(f"SparkSession inicializada: {spark.version}")
     return spark
-
 
 # ============================================================
 # 2. LECTURA DE DATOS
@@ -205,14 +207,14 @@ def temporal_stratified_split(df):
 # ============================================================
 # 5. ESCRITURA DE OUTPUTS
 # ============================================================
+
 def write_spark_parquet(df, output_path: str, name: str):
-    """Escribe Spark DataFrame como Parquet particionado eficientemente."""
-    filepath = os.path.join(output_path, name)
+    """Escribe Spark DataFrame como Parquet."""
+    filepath = f"file://{os.path.join(output_path, name)}"
     count = df.count()
-    # ~1-2M rows por archivo para lectura eficiente en Training Job
-    n_partitions = max(1, min(count // 1_500_000, 32))
-    df.coalesce(max(1, n_partitions)).write.mode("overwrite").parquet(filepath)
+    df.coalesce(1).write.mode("overwrite").parquet(filepath)
     logger.info(f"  → {name}: {count:,} filas → {filepath}")
+
 
 
 def copy_artifact(src_dir: str, dst_dir: str, filename: str):
