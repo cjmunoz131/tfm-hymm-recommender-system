@@ -68,7 +68,14 @@ def get_spark_session() -> SparkSession:
         .appName("HymmRec-FeatureEngineering") \
         .config("spark.sql.parquet.enableVectorizedReader", "true") \
         .config("spark.sql.adaptive.enabled", "true") \
+        .config("spark.sql.sources.partitionOverwriteMode", "dynamic") \
         .getOrCreate()
+
+    # Habilitar lectura recursiva para encontrar parquets en subdirectorios
+    # (Iceberg guarda los .parquet dentro de subcarpetas data/ o particiones)
+    spark.conf.set("spark.sql.sources.partitionDiscovery.enabled", "false")
+    spark.sparkContext._jsc.hadoopConfiguration().set("mapreduce.input.fileinputformat.input.dir.recursive", "true")
+
     logger.info(f"SparkSession inicializada: {spark.version}")
     return spark
 
@@ -77,9 +84,29 @@ def get_spark_session() -> SparkSession:
 # 2. LECTURA DE DATOS (SPARK)
 # ============================================================
 def load_ratings_spark(spark: SparkSession, path: str):
-    """Lee ratings desde Parquet (Iceberg materializado)."""
+    """Lee ratings desde Parquet (Iceberg materializado).
+    
+    Iceberg almacena los parquets en subcarpeta 'data/' o con particiones.
+    Intentamos leer el path directo; si falla, buscamos en subdirectorios.
+    """
     logger.info(f"Cargando ratings desde: {path}")
-    df = spark.read.parquet(path)
+
+    # Intentar leer recursivamente con wildcard para cubrir estructura Iceberg
+    try:
+        df = spark.read.parquet(path)
+        if df.schema.fields:  # Schema inferido OK → hay archivos
+            count = df.count()
+            n_users = df.select("userId").distinct().count()
+            n_items = df.select("movieId").distinct().count()
+            logger.info(f"  → {count:,} interacciones | {n_users:,} usuarios | {n_items:,} películas")
+            return df
+    except Exception as e:
+        logger.warning(f"  → Lectura directa falló: {e}")
+
+    # Fallback: buscar parquets en subdirectorios (estructura Iceberg: /data/*.parquet)
+    recursive_path = path.rstrip("/") + "/data"
+    logger.info(f"  → Intentando path Iceberg: {recursive_path}")
+    df = spark.read.parquet(recursive_path)
     count = df.count()
     n_users = df.select("userId").distinct().count()
     n_items = df.select("movieId").distinct().count()
@@ -88,9 +115,24 @@ def load_ratings_spark(spark: SparkSession, path: str):
 
 
 def load_movies_spark(spark: SparkSession, path: str):
-    """Lee movies desde Parquet (Iceberg materializado)."""
+    """Lee movies desde Parquet (Iceberg materializado).
+    
+    Misma lógica que ratings: intenta directo, fallback a subcarpeta data/.
+    """
     logger.info(f"Cargando movies desde: {path}")
-    df = spark.read.parquet(path)
+
+    try:
+        df = spark.read.parquet(path)
+        if df.schema.fields:
+            count = df.count()
+            logger.info(f"  → {count:,} películas")
+            return df
+    except Exception as e:
+        logger.warning(f"  → Lectura directa falló: {e}")
+
+    recursive_path = path.rstrip("/") + "/data"
+    logger.info(f"  → Intentando path Iceberg: {recursive_path}")
+    df = spark.read.parquet(recursive_path)
     count = df.count()
     logger.info(f"  → {count:,} películas")
     return df
