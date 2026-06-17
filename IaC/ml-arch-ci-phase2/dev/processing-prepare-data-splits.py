@@ -76,6 +76,22 @@ def load_features(spark: SparkSession, path: str):
     """
     logger.info(f"Cargando features desde: {path}")
     df = spark.read.option("recursiveFileLookup", "true").parquet(path)
+    # Consolidar micro-archivos del Feature Store en pocas particiones en memoria
+    # Esto evita el overhead de scheduling de cientos de micro-tasks
+    n_partitions = max(4, df.rdd.getNumPartitions() // 50)
+    df = df.coalesce(n_partitions)
+    logger.info(f"  → Consolidado de {df.rdd.getNumPartitions()} particiones a {n_partitions}")
+
+    # Filtrar registros marcados como eliminados por Feature Store (si existe la columna)
+    if "is_deleted" in df.columns:
+        df = df.filter(df["is_deleted"] == False).drop("is_deleted")
+
+    # Eliminar columnas internas del Feature Store que no necesitamos
+    cols_to_drop = [c for c in df.columns if c in (
+        "write_time", "api_invocation_time", "is_deleted",
+        "hymmrec_eventtime_sm_et_fn_trunc"
+    )]
+    df = df.drop(*cols_to_drop)
     count = df.count()
     n_users = df.select("userId").distinct().count()
     n_items = df.select("movieId").distinct().count()
