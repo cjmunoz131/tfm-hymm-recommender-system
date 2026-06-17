@@ -292,14 +292,20 @@ def ingest_to_feature_store(df: pd.DataFrame, feature_group_name: str, region: s
 
 
 def _save_fallback_parquet(df: pd.DataFrame):
-    """Guarda features como Parquet si Feature Store falla (para que Job 2 funcione)."""
+    """
+    Guarda features como Parquet consolidado.
+    Se ejecuta SIEMPRE (no es un fallback) para que Job 3 (splits)
+    lea un archivo optimizado en vez de los miles de micro-archivos
+    que genera Feature Store offline.
+    """
     fallback_path = "/opt/ml/processing/output/feature_interactions"
     os.makedirs(fallback_path, exist_ok=True)
     filepath = os.path.join(fallback_path, "feature_interactions.parquet")
     df_save = df[["userId", "movieId", "rating", "timestamp", "generos",
                   "rating_scaled", "userId_idx", "movieId_idx", "genres_multihot"]].copy()
     df_save.to_parquet(filepath, index=False)
-    logger.info(f"  → Fallback Parquet guardado: {filepath}")
+    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+    logger.info(f"  → Parquet consolidado guardado: {filepath} ({size_mb:.1f} MB)")
 
 
 # ============================================================
@@ -354,6 +360,9 @@ def main():
     # 4. Ingestar en Feature Store
     logger.info("\n[PASO 4/4] Ingesting en Feature Store (offline)...")
     ingest_to_feature_store(df_features_pd, args.feature_group_name, args.region)
+
+    # Siempre guardar Parquet consolidado (para que Job 3 lo use en vez de los micro-archivos del Feature Store)
+    _save_fallback_parquet(df_features_pd)
 
     # Guardar encoders (siempre, independiente del Feature Store)
     save_encoders(encoders, output_encoders)
