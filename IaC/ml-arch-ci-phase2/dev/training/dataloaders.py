@@ -27,7 +27,7 @@ Uso (Regresión):
 
 Uso (Multi-Task Two-Heads):
     from dataloaders import load_datasets_and_create_loaders
-    loaders = load_datasets_and_create_loaders(data_dir, embeddings_dir, mode='multitask', batch_size=256, num_negatives=20)
+    loaders = load_datasets_and_create_loaders(data_dir, embeddings_dir, mode='multitask', batch_size=256, neg_ratio=4)
 """
 
 import logging
@@ -152,23 +152,26 @@ class MultiTaskRecDataset(Dataset):
 def apply_negative_sampling(
     df_train: pd.DataFrame,
     df_all: pd.DataFrame,
-    num_negatives: int = 20,
+    neg_ratio: int = 4,
     seed: int = 42,
 ) -> pd.DataFrame:
     """
     Genera muestras negativas EXCLUSIVAMENTE para el dataset de entrenamiento.
     Se ejecuta en memoria durante la inicialización del DataLoader.
 
-    Estrategia:
-      - Para cada usuario, muestrea `num_negatives` ítems que NUNCA ha visto
-        (en todo el historial global, no solo train)
+    Estrategia (ratio por positivo):
+      - Para cada interacción positiva, muestrea `neg_ratio` ítems que el
+        usuario NUNCA ha visto (en todo el historial global, no solo train)
       - Los negativos reciben rating_scaled = 0.0
       - Se restauran userId_idx, movieId_idx y genres_multihot desde mapeos
+
+    Esto garantiza un balance consistente independiente del número de
+    interacciones del usuario (ratio 1:neg_ratio para todos).
 
     Args:
         df_train: DataFrame de entrenamiento (solo positivos)
         df_all: DataFrame completo (train+val+test) para historial global
-        num_negatives: Número de negativos fijos por usuario
+        neg_ratio: Negativos por cada interacción positiva (default: 4 → ratio 1:4)
         seed: Semilla para reproducibilidad
 
     Returns:
@@ -197,16 +200,17 @@ def apply_negative_sampling(
     item_genres_map = df_items_unique["genres_multihot"].to_dict()
 
     logger.info(
-        f"Generando {num_negatives} negativos por usuario "
-        f"({df_train['userId'].nunique():,} usuarios, pool: {len(item_pool):,} ítems)..."
+        f"Generando negativos por POSITIVO (ratio 1:{neg_ratio}) "
+        f"({len(df_train):,} positivos, pool: {len(item_pool):,} ítems)..."
     )
 
-    # Generar negativos
+    # Generar negativos por cada interacción positiva
     negative_records = []
-    for user_id in df_train["userId"].unique():
+    for _, row in df_train.iterrows():
+        user_id = row["userId"]
         interacted = global_history.get(user_id, set())
         available = list(item_pool - interacted)
-        n_samples = min(num_negatives, len(available))
+        n_samples = min(neg_ratio, len(available))
 
         if n_samples == 0:
             continue
@@ -239,9 +243,11 @@ def apply_negative_sampling(
     df_final = pd.concat([df_positives, df_negatives[columnas]], ignore_index=True)
     df_final = df_final.sample(frac=1, random_state=seed).reset_index(drop=True)
 
+    ratio_real = len(df_negatives) / max(len(df_positives), 1)
     logger.info(
         f"  Train final: {len(df_final):,} filas "
-        f"(Positivos: {len(df_positives):,} | Negativos: {len(df_negatives):,})"
+        f"(Positivos: {len(df_positives):,} | Negativos: {len(df_negatives):,} | "
+        f"Ratio efectivo: 1:{ratio_real:.1f})"
     )
     return df_final
 
@@ -296,7 +302,7 @@ def load_datasets_and_create_loaders(
     embeddings_dir: str,
     mode: str = "regression",
     batch_size: int = 256,
-    num_negatives: int = 20,
+    neg_ratio: int = 4,
     num_workers: int = 2,
     seed: int = 42,
 ) -> Tuple[DataLoader, DataLoader, DataLoader, Dict]:
@@ -308,7 +314,7 @@ def load_datasets_and_create_loaders(
         embeddings_dir: Directorio con embeddings_catalog.pkl
         mode: 'regression' o 'multitask'
         batch_size: Tamaño de batch
-        num_negatives: Negativos por usuario (solo en mode='multitask')
+        neg_ratio: Negativos por cada positivo (solo en mode='multitask', ratio 1:neg_ratio)
         num_workers: Workers para DataLoader
         seed: Semilla para muestreo negativo
 
@@ -318,6 +324,8 @@ def load_datasets_and_create_loaders(
     """
     logger.info(f"Cargando datasets desde: {data_dir}")
     logger.info(f"Modo: {mode} | Batch: {batch_size} | Workers: {num_workers}")
+    if mode == "multitask":
+        logger.info(f"Negative sampling ratio: 1:{neg_ratio} (por positivo)")
 
     # 1. Cargar splits
     df_train = load_parquet_dataset(os.path.join(data_dir, "train"))
@@ -347,9 +355,9 @@ def load_datasets_and_create_loaders(
     use_pin_memory = torch.cuda.is_available()
 
     if mode == "multitask":
-        # Multi-Task (Two-Heads): Aplicar muestreo negativo al train
+        # Multi-Task (Two-Heads): Aplicar muestreo negativo al train (ratio por positivo)
         df_train_ns = apply_negative_sampling(
-            df_train, df_all, num_negatives=num_negatives, seed=seed
+            df_train, df_all, neg_ratio=neg_ratio, seed=seed
         )
         train_dataset = MultiTaskRecDataset(df_train_ns, dict_embeddings)
         val_dataset = MultiTaskRecDataset(df_val, dict_embeddings)
