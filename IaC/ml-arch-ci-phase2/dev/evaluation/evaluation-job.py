@@ -361,30 +361,42 @@ def evaluate_pointwise_metrics(model, df_eval, dict_embeddings, device, mode="re
         "n_samples": n_samples,
     }
 
-    # Métricas de clasificación (solo two-heads)
+    # Métricas de clasificación por umbral de estrellas (solo two-heads)
+    # Evalúa la cabeza de RATING como clasificador de calidad: ¿predice >= 3.5★?
+    # Alineado con evaluar_clasificacion_recomendador_mtl del notebook
     if mode == "twoheads" and all_preds_interaction:
         pred_int = np.array(all_preds_interaction)
-        true_labels = (true_ratings > 0.0).astype(float)
-        pred_labels = (pred_int >= 0.5).astype(float)
 
-        tp = float(((pred_labels == 1) & (true_labels == 1)).sum())
-        fp = float(((pred_labels == 1) & (true_labels == 0)).sum())
-        fn = float(((pred_labels == 0) & (true_labels == 1)).sum())
-        tn = float(((pred_labels == 0) & (true_labels == 0)).sum())
+        # Binarización por umbral de estrellas (cabeza de rating)
+        quality_threshold = 3.5
+        pred_stars = pred_ratings * 4.0 + 1.0
+        true_stars = true_ratings * 4.0 + 1.0
+
+        true_quality = (true_stars >= quality_threshold).astype(float)
+        pred_quality = (pred_stars >= quality_threshold).astype(float)
+
+        tp = float(((pred_quality == 1) & (true_quality == 1)).sum())
+        fp = float(((pred_quality == 1) & (true_quality == 0)).sum())
+        fn = float(((pred_quality == 0) & (true_quality == 1)).sum())
+        tn = float(((pred_quality == 0) & (true_quality == 0)).sum())
 
         accuracy = (tp + tn) / (tp + fp + fn + tn + 1e-8)
-        precision = tp / (tp + fp + 1e-8)
-        recall = tp / (tp + fn + 1e-8)
-        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        precision_cls = tp / (tp + fp + 1e-8)
+        recall_cls = tp / (tp + fn + 1e-8)
+        f1 = 2 * precision_cls * recall_cls / (precision_cls + recall_cls + 1e-8)
 
-        bce = float(-np.mean(true_labels * np.log(pred_int + 1e-8) + (1 - true_labels) * np.log(1 - pred_int + 1e-8)))
+        bce = float(-np.mean(
+            (true_ratings > 0).astype(float) * np.log(pred_int + 1e-8) +
+            (1 - (true_ratings > 0).astype(float)) * np.log(1 - pred_int + 1e-8)
+        ))
 
         metrics.update({
             "bce": bce,
+            "quality_threshold_stars": quality_threshold,
             "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
+            "precision_quality": precision_cls,
+            "recall_quality": recall_cls,
+            "f1_quality": f1,
             "confusion_matrix": {"tp": int(tp), "fp": int(fp), "fn": int(fn), "tn": int(tn)},
         })
 
@@ -495,7 +507,7 @@ def evaluate_model_complete(model, mode, df_test, df_coldstart, df_all, dict_emb
     }
     if "bce" in results["test_pointwise"]:
         results["summary"]["bce"] = results["test_pointwise"]["bce"]
-        results["summary"]["f1"] = results["test_pointwise"]["f1"]
+        results["summary"]["f1_quality"] = results["test_pointwise"]["f1_quality"]
         results["summary"]["accuracy"] = results["test_pointwise"]["accuracy"]
 
     return results
