@@ -65,7 +65,7 @@ module "aws_ml_gov_model_serving_hymmrec_package_group_layer_module" {
   }
   source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-packagegroup-sagemaker"
 
-  enable_sagemaker_feature_group = true
+  enable_sagemaker_package_group = true
   project                        = var.project
   package_group_name             = var.package_group_name
 }
