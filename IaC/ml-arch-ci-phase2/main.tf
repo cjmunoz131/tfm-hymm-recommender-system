@@ -58,3 +58,14 @@ module "hymmrec_feature_group" {
   ]
   sagemaker_feature_group_security_config = []
 }
+
+module "aws_ml_gov_model_serving_hymmrec_package_group_layer_module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-packagegroup-sagemaker"
+
+  enable_sagemaker_feature_group = true
+  project                        = var.project
+  package_group_name             = var.package_group_name
+}

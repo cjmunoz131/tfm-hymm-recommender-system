@@ -71,3 +71,9 @@ variable "ml_use_case" {
   description = "use case in gold layer"
   default = "ml_feature_store"
 }
+
+variable "package_group_name" {
+  type = string
+  description = "package group name"
+  default = "model"
+}
