@@ -294,6 +294,29 @@ def load_embeddings(path: str) -> Dict:
     return embeddings
 
 
+def load_encoders(path: str) -> Dict:
+    """Carga el diccionario de encoders (LabelEncoder, MultiLabelBinarizer) desde pickle."""
+    if os.path.isdir(path):
+        pkl_files = [f for f in os.listdir(path) if f.endswith(".pkl")]
+        if pkl_files:
+            filepath = os.path.join(path, pkl_files[0])
+        else:
+            raise FileNotFoundError(f"No se encontró .pkl en {path}")
+    else:
+        filepath = path
+
+    with open(filepath, "rb") as f:
+        encoders = pickle.load(f)
+
+    logger.info(
+        f"  Encoders cargados: {filepath} → "
+        f"{len(encoders['le_user'].classes_):,} users, "
+        f"{len(encoders['le_item'].classes_):,} items, "
+        f"{len(encoders['mlb'].classes_)} categorías"
+    )
+    return encoders
+
+
 # ============================================================
 # FACTORY PRINCIPAL
 # ============================================================
@@ -344,7 +367,7 @@ def load_datasets_and_create_loaders(
 
     if encoders_dir and os.path.exists(encoders_dir):
         # Usar vocabulario COMPLETO del LabelEncoder (incluye cold-start)
-        encoders = load_pkl(encoders_dir)
+        encoders = load_encoders(encoders_dir)
         num_users = len(encoders["le_user"].classes_)
         num_items = len(encoders["le_item"].classes_)
         num_categories = len(encoders["mlb"].classes_)
