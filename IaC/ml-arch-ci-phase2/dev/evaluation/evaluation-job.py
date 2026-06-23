@@ -445,11 +445,17 @@ def evaluate_precision_recall_at_k(model, df_eval, dict_embeddings, device, mode
 # ============================================================
 # EVALUACIÓN COMPLETA DE UN MODELO
 # ============================================================
-def evaluate_model_complete(model, mode, df_test, df_coldstart, df_all, dict_embeddings, device, k=10):
+def evaluate_model_complete(model, mode, df_test, df_coldstart, df_all, dict_embeddings, device, k=10, metadata=None):
     """Ejecuta todas las evaluaciones para un modelo."""
     logger.info(f"\n{'='*60}")
     logger.info(f"EVALUACIÓN COMPLETA: {mode.upper()}")
     logger.info(f"{'='*60}")
+
+    if metadata is None:
+        metadata = {
+            "num_users": int(df_all["userId_idx"].max()) + 1,
+            "num_items": int(df_all["movieId_idx"].max()) + 1,
+        }
 
     results = {"mode": mode}
 
@@ -551,8 +557,8 @@ def main():
     parser = argparse.ArgumentParser(description="HYMM-REC Evaluation Processing Job")
     parser.add_argument("--k", type=int, default=10, help="K para métricas Top-K")
     parser.add_argument("--num-decoys", type=int, default=99, help="Señuelos para ranking")
-    parser.add_argument("--emb-dim", type=int, default=64, help="Dimensión de embeddings")
-    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout del modelo")
+    parser.add_argument("--emb-dim", type=int, default=64, help="Dimensión de embeddings (fallback)")
+    parser.add_argument("--dropout", type=float, default=0.3, help="Dropout del modelo (fallback)")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -564,6 +570,7 @@ def main():
     models_base = "/opt/ml/processing/input/models"
     datasets_base = "/opt/ml/processing/input/datasets"
     embeddings_path = "/opt/ml/processing/input/embeddings"
+    encoders_path = "/opt/ml/processing/input/encoders"
     output_path = "/opt/ml/processing/output/reports"
 
     # 1. Cargar datos
@@ -578,9 +585,18 @@ def main():
     df_all = pd.concat([df_train, df_val, df_test])
     dict_embeddings = load_pkl(embeddings_path)
 
-    num_users = int(df_all["userId_idx"].max()) + 1
-    num_items = int(df_all["movieId_idx"].max()) + 1
-    num_categories = len(df_all["genres_multihot"].iloc[0])
+    # Dimensiones desde encoders.pkl (vocabulario completo, incluye cold-start)
+    if os.path.exists(encoders_path):
+        encoders = load_pkl(encoders_path)
+        num_users = len(encoders["le_user"].classes_)
+        num_items = len(encoders["le_item"].classes_)
+        num_categories = len(encoders["mlb"].classes_)
+        logger.info(f"  Dimensiones desde encoders.pkl (vocabulario completo)")
+    else:
+        num_users = int(df_all["userId_idx"].max()) + 1
+        num_items = int(df_all["movieId_idx"].max()) + 1
+        num_categories = len(df_all["genres_multihot"].iloc[0])
+        logger.info(f"  Dimensiones desde max(dataset) — encoders.pkl no encontrado")
 
     logger.info(f"  Universo: {num_users:,} users | {num_items:,} items | {num_categories} cats")
 
@@ -611,11 +627,14 @@ def main():
     logger.info("  Modelo two-heads cargado.")
 
     # 4. Evaluar ambos modelos
+    reg_metadata = {"num_users": num_users, "num_items": num_items, "num_categories": num_categories}
+    th_metadata = {"num_users": num_users, "num_items": num_items, "num_categories": num_categories}
+
     results_reg = evaluate_model_complete(
-        model_reg, "regression", df_test, df_coldstart, df_all, dict_embeddings, device, k=args.k
+        model_reg, "regression", df_test, df_coldstart, df_all, dict_embeddings, device, k=args.k, metadata=reg_metadata
     )
     results_th = evaluate_model_complete(
-        model_th, "twoheads", df_test, df_coldstart, df_all, dict_embeddings, device, k=args.k
+        model_th, "twoheads", df_test, df_coldstart, df_all, dict_embeddings, device, k=args.k, metadata=th_metadata
     )
 
     # 5. Comparar y seleccionar ganador

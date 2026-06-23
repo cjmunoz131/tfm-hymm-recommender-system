@@ -178,6 +178,7 @@ def main(args):
     train_loader, val_loader, test_loader, metadata = load_datasets_and_create_loaders(
         data_dir=args.data_dir,
         embeddings_dir=args.embeddings_dir,
+        encoders_dir=args.encoders_dir,
         mode="regression",
         batch_size=args.batch_size,
         num_workers=args.num_workers,
@@ -380,6 +381,7 @@ if __name__ == "__main__":
     parser.add_argument("--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "/opt/ml/model"))
     parser.add_argument("--data-dir", type=str, default=os.environ.get("SM_CHANNEL_TRAIN", "/opt/ml/input/data/train"))
     parser.add_argument("--embeddings-dir", type=str, default=os.environ.get("SM_CHANNEL_EMBEDDINGS", "/opt/ml/input/data/embeddings"))
+    parser.add_argument("--encoders-dir", type=str, default=os.environ.get("SM_CHANNEL_ENCODERS", "/opt/ml/input/data/encoders"))
     parser.add_argument("--output-data-dir", type=str, default=os.environ.get("SM_OUTPUT_DATA_DIR", "/opt/ml/output/data"))
 
     args = parser.parse_args()
@@ -388,6 +390,7 @@ if __name__ == "__main__":
     args.model_dir = getattr(args, "model_dir", None) or args.__dict__.get("model-dir", "/opt/ml/model")
     args.data_dir = getattr(args, "data_dir", None) or args.__dict__.get("data-dir", "/opt/ml/input/data/train")
     args.embeddings_dir = getattr(args, "embeddings_dir", None) or args.__dict__.get("embeddings-dir", "/opt/ml/input/data/embeddings")
+    args.encoders_dir = getattr(args, "encoders_dir", None) or args.__dict__.get("encoders-dir", "/opt/ml/input/data/encoders")
     args.output_data_dir = getattr(args, "output_data_dir", None) or args.__dict__.get("output-data-dir", "/opt/ml/output/data")
 
     main(args)

@@ -265,6 +265,7 @@ regression_final_estimator.fit(
     inputs={
         "train": S3_PLATINUM_DATASETS,
         "embeddings": S3_PLATINUM_EMBEDDINGS,
+        "encoders": S3_PLATINUM_ENCODERS,
     },
     wait=True,
     logs="All",
@@ -307,14 +308,13 @@ twoheads_estimator = PyTorch(
     ],
 )
 
-# Rangos de HPs para two-heads (incluye num_negatives)
+# Rangos de HPs para two-heads (neg_ratio es fijo, no tunable)
 twoheads_hp_ranges = {
-    "lr": ContinuousParameter(0.0001, 0.01, scaling_type="Logarithmic"),
+    "lr": ContinuousParameter(0.0001, 0.005, scaling_type="Logarithmic"),
     "batch_size": CategoricalParameter([128, 256, 512]),
     "emb_dim": CategoricalParameter([32, 64, 128]),
     "dropout": ContinuousParameter(0.1, 0.5),
     "weight_decay": ContinuousParameter(1e-6, 1e-3, scaling_type="Logarithmic"),
-    "num_negatives": CategoricalParameter([10, 20, 50]),
 }
 
 twoheads_objective_metric = {
@@ -337,7 +337,7 @@ twoheads_tuner = HyperparameterTuner(
         {"Name": "lr", "Regex": r"lr=(.*?);"},
     ],
     objective_type="Minimize",
-    max_jobs=16,  # Más jobs porque tenemos un HP extra (num_negatives)
+    max_jobs=12,  # Sin neg_ratio tunable, menos combinaciones necesarias
     max_parallel_jobs=4,
     strategy="Bayesian",
     base_tuning_job_name="hymmrec-hpo-th",
@@ -400,7 +400,7 @@ twoheads_final_estimator = PyTorch(
         "emb_dim": int(best_th_hps.get("emb_dim", 64)),
         "dropout": float(best_th_hps.get("dropout", 0.3)),
         "weight_decay": float(best_th_hps.get("weight_decay", 1e-5)),
-        "num_negatives": int(best_th_hps.get("num_negatives", 20)),
+        "neg_ratio": 4,  # Fijo: 4 negativos por positivo
         "num_workers": 2,
         # LR Scheduler
         "scheduler_patience": 2,
@@ -417,6 +417,7 @@ twoheads_final_estimator.fit(
     inputs={
         "train": S3_PLATINUM_DATASETS,
         "embeddings": S3_PLATINUM_EMBEDDINGS,
+        "encoders": S3_PLATINUM_ENCODERS,
     },
     wait=True,
     logs="All",
@@ -449,7 +450,7 @@ print(f"   - LR: {th_hp_summary.get('lr')}")
 print(f"   - Emb Dim: {th_hp_summary.get('emb_dim')}")
 print(f"   - Dropout: {th_hp_summary.get('dropout')}")
 print(f"   - Batch: {th_hp_summary.get('batch_size')}")
-print(f"   - Num Negatives: {th_hp_summary.get('num_negatives')}")
+print(f"   - Neg Ratio: 4 (fijo)")
 print(f"   - Objetivo: Minimizar BCE(ranking) + MSE(calidad)")
 
 print("\n" + "=" * 60)

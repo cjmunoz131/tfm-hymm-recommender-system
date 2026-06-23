@@ -217,6 +217,12 @@ eval_processor.run(
             s3_data_type="S3Prefix",
             s3_input_mode="File",
         ),
+        ProcessingInput(
+            source=S3_PLATINUM_ENCODERS,
+            destination="/opt/ml/processing/input/encoders",
+            s3_data_type="S3Prefix",
+            s3_input_mode="File",
+        ),
     ],
     outputs=[
         ProcessingOutput(

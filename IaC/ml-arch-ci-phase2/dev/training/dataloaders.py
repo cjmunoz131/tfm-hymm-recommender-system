@@ -300,6 +300,7 @@ def load_embeddings(path: str) -> Dict:
 def load_datasets_and_create_loaders(
     data_dir: str,
     embeddings_dir: str,
+    encoders_dir: str = None,
     mode: str = "regression",
     batch_size: int = 256,
     neg_ratio: int = 4,
@@ -312,6 +313,9 @@ def load_datasets_and_create_loaders(
     Args:
         data_dir: Directorio base con subcarpetas train/, val/, test/
         embeddings_dir: Directorio con embeddings_catalog.pkl
+        encoders_dir: Directorio con encoders.pkl (vocabulario completo del LabelEncoder).
+                      Si se provee, usa el vocabulario COMPLETO para dimensionar embeddings
+                      (incluye cold-start items/users). Si no, usa max(dataset idx) + 1.
         mode: 'regression' o 'multitask'
         batch_size: Tamaño de batch
         neg_ratio: Negativos por cada positivo (solo en mode='multitask', ratio 1:neg_ratio)
@@ -335,11 +339,22 @@ def load_datasets_and_create_loaders(
     # 2. Cargar embeddings multimodales
     dict_embeddings = load_embeddings(embeddings_dir)
 
-    # 3. Calcular dimensiones globales
+    # 3. Calcular dimensiones globales del vocabulario
     df_all = pd.concat([df_train, df_val, df_test])
-    num_users = int(df_all["userId_idx"].max()) + 1
-    num_items = int(df_all["movieId_idx"].max()) + 1
-    num_categories = len(df_all["genres_multihot"].iloc[0])
+
+    if encoders_dir and os.path.exists(encoders_dir):
+        # Usar vocabulario COMPLETO del LabelEncoder (incluye cold-start)
+        encoders = load_pkl(encoders_dir)
+        num_users = len(encoders["le_user"].classes_)
+        num_items = len(encoders["le_item"].classes_)
+        num_categories = len(encoders["mlb"].classes_)
+        logger.info(f"  Dimensiones desde encoders.pkl (vocabulario completo, incluye cold-start)")
+    else:
+        # Fallback: usar max del dataset (no cubre cold-start)
+        num_users = int(df_all["userId_idx"].max()) + 1
+        num_items = int(df_all["movieId_idx"].max()) + 1
+        num_categories = len(df_all["genres_multihot"].iloc[0])
+        logger.info(f"  Dimensiones desde max(dataset idx) — sin cobertura cold-start")
 
     logger.info(
         f"Universo: {num_users:,} usuarios | {num_items:,} ítems | {num_categories} categorías"
