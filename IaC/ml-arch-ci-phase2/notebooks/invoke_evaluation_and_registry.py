@@ -604,7 +604,7 @@ full_model_predictor.deserializer = JSONDeserializer()
 test_input_full = {
     "user_idx": 0,
     "item_idx": 0,
-    "genres_multihot": [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "genres_multihot": [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  # 20 géneros
     "text_emb": [0.0] * 1024,  # Placeholder
     "img_emb": [0.0] * 1024,   # Placeholder
 }
