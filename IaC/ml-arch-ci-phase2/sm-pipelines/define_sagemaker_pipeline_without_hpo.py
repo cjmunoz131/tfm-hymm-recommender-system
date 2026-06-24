@@ -1,42 +1,42 @@
 """
 ==============================================================================
-HYMM-REC MLOps: SageMaker Pipeline con HPO (DAG Completo - CI/CD Ready)
+HYMM-REC MLOps: Definición del SageMaker Pipeline (DAG Completo)
 ==============================================================================
-Script que genera la definición del SageMaker Pipeline para despliegue
-via Terraform + Azure DevOps CI/CD.
+Este script genera la definición JSON del SageMaker Pipeline que orquesta
+el flujo MLOps end-to-end del sistema recomendador híbrido multimodal.
 
 DAG del Pipeline:
-  ┌──────────────────────────────────────────────────────────────────────────┐
-  │  FeatureEngineering (PySpark) ──┐                                        │
-  │                                 ├──► DatasetPreparation                  │
-  │  EmbeddingsGeneration (SKLearn) ┘         │                              │
-  │                                           ▼                              │
-  │                          ┌── HPO Regression ──► Training Regression ──┐  │
-  │                          │                                            │  │
-  │                          └── HPO TwoHeads  ──► Training TwoHeads  ───┘  │
-  │                                                       │                  │
-  │                                                       ▼                  │
-  │                                              ModelEvaluation              │
-  │                                                       │                  │
-  │                                                       ▼                  │
-  │                                            QualityGateCheck              │
-  │                                              ┌────┴────┐                 │
-  │                                         Pass │         │ Fail            │
-  │                                              ▼         ▼                 │
-  │                                     RegisterModel   FailStep             │
-  │                                              │                           │
-  │                                              ▼                           │
-  │                                      ModelPackaging                      │
-  └──────────────────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  Processing (Feature Eng)  ──┐                                      │
+  │                              ├──► Processing (Data Splits)          │
+  │  Processing (Embeddings)  ───┘         │                            │
+  │                                        ▼                            │
+  │                          ┌─── Training (Regression) ───┐            │
+  │                          │                             │            │
+  │                          └─── Training (Two-Heads)  ───┘            │
+  │                                        │                            │
+  │                                        ▼                            │
+  │                              Evaluation Job                         │
+  │                                        │                            │
+  │                                        ▼                            │
+  │                           Condition (Quality Gate)                   │
+  │                              ┌────┴────┐                            │
+  │                         Pass │         │ Fail                       │
+  │                              ▼         ▼                            │
+  │                     Model Registry   FailStep                       │
+  │                              │                                      │
+  │                              ▼                                      │
+  │                      Model Packaging                                │
+  └─────────────────────────────────────────────────────────────────────┘
 
-Despliegue (CI/CD):
-  1. Terraform sube scripts a S3 (aws_s3_object)
-  2. Terraform aplica infra (Feature Store, Model Registry, etc.)
-  3. Este script se ejecuta: python define_sagemaker_pipeline.py --upsert
-  4. Se inicia el pipeline: python define_sagemaker_pipeline.py --execute
+Uso:
+  python define_sagemaker_pipeline.py [--region us-east-1] [--role-arn <arn>]
 
-NOTA: Todos los scripts se referencian desde S3 (no paths locales).
-      Terraform se encarga de sincronizar dev/ → S3.
+  # Solo generar JSON sin ejecutar:
+  python define_sagemaker_pipeline.py --export-json pipeline_definition.json
+
+  # Crear/actualizar y ejecutar:
+  python define_sagemaker_pipeline.py --execute
 """
 
 import argparse
@@ -53,11 +53,6 @@ from sagemaker.pytorch import PyTorch
 from sagemaker.pytorch.processing import PyTorchProcessor
 from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.spark.processing import PySparkProcessor
-from sagemaker.tuner import (
-    CategoricalParameter,
-    ContinuousParameter,
-    HyperparameterTuner,
-)
 from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.conditions import ConditionLessThanOrEqualTo
 from sagemaker.workflow.fail_step import FailStep
@@ -70,74 +65,70 @@ from sagemaker.workflow.parameters import (
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.properties import PropertyFile
 from sagemaker.workflow.step_collections import RegisterModel
-from sagemaker.workflow.steps import ProcessingStep, TrainingStep, TuningStep
+from sagemaker.workflow.steps import ProcessingStep, TrainingStep
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# CONSTANTES Y CONFIGURACIÓN
+# CONSTANTES Y CONFIGURACIÓN POR DEFECTO
 # ==============================================================================
 
 PIPELINE_NAME = "hymmrec-mlops-pipeline"
 PIPELINE_DESCRIPTION = (
-    "Pipeline MLOps end-to-end para HYMM-REC. Incluye Feature Engineering, "
-    "Embeddings, Data Splits, HPO (Regresión + Two-Heads), Training Final, "
-    "Evaluation, Quality Gate, Model Registry y Packaging."
+    "Pipeline MLOps end-to-end para el sistema recomendador híbrido multimodal "
+    "HYMM-REC. Incluye Feature Engineering, Embeddings, Data Splits, Training "
+    "(Regresión + Two-Heads), Evaluation, Model Registry y Packaging."
 )
 
-# --- Buckets ---
+# Buckets por defecto
 DEFAULT_SILVER_BUCKET = "hymmrec-dilkehousesilver01"
 DEFAULT_GOLD_BUCKET = "hymmrec-dilkehousegold01"
 DEFAULT_PLATINUM_BUCKET = "hymmrec-sagemaker-assets"
 
-# --- S3 Paths para scripts (subidos por Terraform) ---
-# Terraform sube dev/ → s3://PLATINUM_BUCKET/sagemaker-scripts/
-SCRIPTS_S3_BASE = f"s3://{DEFAULT_PLATINUM_BUCKET}/sagemaker-scripts"
-PROCESSING_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/feng-data-preparing"
-TRAINING_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/training"
-EVALUATION_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/evaluation"
-INFERENCE_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/inference"
-
-# --- Instancias por defecto ---
+# Instancias por defecto
 DEFAULT_PROCESSING_INSTANCE = "ml.m5.xlarge"
 DEFAULT_EMBEDDINGS_INSTANCE = "ml.t3.medium"
 DEFAULT_SPLITS_INSTANCE = "ml.m5.large"
 DEFAULT_TRAINING_INSTANCE = "ml.g4dn.xlarge"
-DEFAULT_HPO_INSTANCE = "ml.g4dn.xlarge"
 DEFAULT_EVAL_INSTANCE = "ml.g4dn.xlarge"
 DEFAULT_PACKAGING_INSTANCE = "ml.m5.large"
 
-# --- HPO Config ---
-HPO_MAX_JOBS = 12
-HPO_MAX_PARALLEL_JOBS = 3
-HPO_STRATEGY = "Bayesian"
+# Scripts relativos al directorio dev/
+SCRIPTS_BASE_DIR = os.path.join(os.path.dirname(__file__), "..", "dev")
+PROCESSING_SCRIPTS_DIR = os.path.join(SCRIPTS_BASE_DIR, "feng-data-preparing")
+TRAINING_SCRIPTS_DIR = os.path.join(SCRIPTS_BASE_DIR, "training")
+EVALUATION_SCRIPTS_DIR = os.path.join(SCRIPTS_BASE_DIR, "evaluation")
 
-# --- Model Registry ---
-MODEL_PACKAGE_GROUP_NAME = "hymmrec-multimodal-recommender"
+# Model Registry
+MODEL_PACKAGE_GROUP_NAME = "hymmrec-model-sm-pg"
 
 
 # ==============================================================================
-# PIPELINE PARAMETERS
+# PARÁMETROS DEL PIPELINE (configurables en tiempo de ejecución)
 # ==============================================================================
 
 
 def define_pipeline_parameters():
-    """Define parámetros configurables en runtime del pipeline."""
+    """Define los parámetros parametrizables del pipeline."""
 
-    # Infraestructura
+    # --- Infraestructura ---
     region = ParameterString(name="Region", default_value="us-east-1")
     role_arn = ParameterString(name="RoleArn", default_value="")
 
-    # Buckets
-    silver_bucket = ParameterString(name="SilverBucket", default_value=DEFAULT_SILVER_BUCKET)
-    gold_bucket = ParameterString(name="GoldBucket", default_value=DEFAULT_GOLD_BUCKET)
-    platinum_bucket = ParameterString(name="PlatinumBucket", default_value=DEFAULT_PLATINUM_BUCKET)
+    # --- Buckets ---
+    silver_bucket = ParameterString(
+        name="SilverBucket", default_value=DEFAULT_SILVER_BUCKET
+    )
+    gold_bucket = ParameterString(
+        name="GoldBucket", default_value=DEFAULT_GOLD_BUCKET
+    )
+    platinum_bucket = ParameterString(
+        name="PlatinumBucket", default_value=DEFAULT_PLATINUM_BUCKET
+    )
 
-    # Instancias
+    # --- Instancias ---
     processing_instance_type = ParameterString(
         name="ProcessingInstanceType", default_value=DEFAULT_PROCESSING_INSTANCE
     )
@@ -148,24 +139,24 @@ def define_pipeline_parameters():
         name="EvalInstanceType", default_value=DEFAULT_EVAL_INSTANCE
     )
 
-    # Training Hyperparams (usados en Training Final post-HPO)
+    # --- Hiperparámetros de Training ---
     epochs = ParameterInteger(name="Epochs", default_value=30)
     batch_size = ParameterInteger(name="BatchSize", default_value=256)
     learning_rate = ParameterFloat(name="LearningRate", default_value=0.001)
     emb_dim = ParameterInteger(name="EmbeddingDim", default_value=64)
     dropout = ParameterFloat(name="Dropout", default_value=0.3)
 
-    # HPO
-    hpo_max_jobs = ParameterInteger(name="HPOMaxJobs", default_value=HPO_MAX_JOBS)
-    hpo_max_parallel = ParameterInteger(name="HPOMaxParallel", default_value=HPO_MAX_PARALLEL_JOBS)
-
-    # Data Splits
-    min_user_interactions = ParameterInteger(name="MinUserInteractions", default_value=5)
-    min_item_interactions = ParameterInteger(name="MinItemInteractions", default_value=5)
+    # --- Data Splits ---
+    min_user_interactions = ParameterInteger(
+        name="MinUserInteractions", default_value=5
+    )
+    min_item_interactions = ParameterInteger(
+        name="MinItemInteractions", default_value=5
+    )
     train_ratio = ParameterFloat(name="TrainRatio", default_value=0.80)
     val_ratio = ParameterFloat(name="ValRatio", default_value=0.10)
 
-    # Quality Gate
+    # --- Quality Gate ---
     max_rmse_threshold = ParameterFloat(name="MaxRMSEThreshold", default_value=2.0)
 
     return {
@@ -182,8 +173,6 @@ def define_pipeline_parameters():
         "learning_rate": learning_rate,
         "emb_dim": emb_dim,
         "dropout": dropout,
-        "hpo_max_jobs": hpo_max_jobs,
-        "hpo_max_parallel": hpo_max_parallel,
         "min_user_interactions": min_user_interactions,
         "min_item_interactions": min_item_interactions,
         "train_ratio": train_ratio,
@@ -193,7 +182,7 @@ def define_pipeline_parameters():
 
 
 # ==============================================================================
-# STEP 1: Feature Engineering (PySpark Processing)
+# STEP 1: PROCESSING — Feature Engineering (PySpark)
 # ==============================================================================
 
 
@@ -201,13 +190,13 @@ def create_step_feature_engineering(params, role, session):
     """
     Processing Job 1: Feature Engineering + Feature Store Ingestion.
     - Lee ratings + movies de Silver (Iceberg/Parquet)
-    - Label Encoding, Multi-Hot, Rating Scaling (PySpark + sklearn)
+    - Aplica Label Encoding, Multi-Hot, Rating Scaling (PySpark + sklearn)
     - Ingesta features en Feature Store offline
     - Guarda encoders.pkl en Platinum
     """
     pyspark_processor = PySparkProcessor(
         role=role,
-        instance_type=DEFAULT_PROCESSING_INSTANCE,
+        instance_type=params["processing_instance_type"],
         instance_count=1,
         framework_version="3.3",
         sagemaker_session=session,
@@ -215,6 +204,7 @@ def create_step_feature_engineering(params, role, session):
         tags=[
             {"Key": "project", "Value": "hymmrec"},
             {"Key": "phase", "Value": "feature-engineering"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
     )
 
@@ -245,26 +235,31 @@ def create_step_feature_engineering(params, role, session):
                 output_name="feature_interactions",
             ),
         ],
-        code=f"{PROCESSING_SCRIPTS_S3}/processing-feature-eng-job.py",
-        job_arguments=["--region", "us-east-1", "--feature-group-name", "hymmrec-interactions-sm-fg"],
+        code=os.path.join(PROCESSING_SCRIPTS_DIR, "processing-feature-eng-job.py"),
+        job_arguments=[
+            "--region", "us-east-1",
+            "--feature-group-name", "hymmrec-interactions-sm-fg",
+        ],
     )
 
     return step_feng
 
 
 # ==============================================================================
-# STEP 2: Embeddings Generation (SKLearn + Bedrock Nova)
+# STEP 2: PROCESSING — Multimodal Embeddings (Bedrock Nova)
 # ==============================================================================
 
 
 def create_step_embeddings(params, role, session):
     """
     Processing Job 2: Generación de Embeddings Multimodales.
-    - Lee catálogo de películas + posters desde Silver
+    - Lee catálogo de películas desde Silver
+    - Descarga posters desde Silver
     - Genera embeddings multimodales (texto + imagen) con Amazon Bedrock Nova
-    - Guarda embeddings_catalog.pkl en Platinum
+    - Guarda embeddings_catalog.pkl en Gold/Platinum
 
-    Puede correr EN PARALELO con Feature Engineering.
+    NOTA: Este step puede correr EN PARALELO con Feature Engineering
+    ya que no depende de sus outputs.
     """
     sklearn_processor = SKLearnProcessor(
         role=role,
@@ -276,6 +271,7 @@ def create_step_embeddings(params, role, session):
         tags=[
             {"Key": "project", "Value": "hymmrec"},
             {"Key": "phase", "Value": "embeddings-generation"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
     )
 
@@ -301,15 +297,18 @@ def create_step_embeddings(params, role, session):
                 output_name="embeddings",
             ),
         ],
-        code=f"{PROCESSING_SCRIPTS_S3}/processing-embeddings-job.py",
-        job_arguments=["--region", "us-east-1", "--max-workers", "10"],
+        code=os.path.join(PROCESSING_SCRIPTS_DIR, "processing-embeddings-job.py"),
+        job_arguments=[
+            "--region", "us-east-1",
+            "--max-workers", "10",
+        ],
     )
 
     return step_embeddings
 
 
 # ==============================================================================
-# STEP 3: Dataset Preparation (K-Core + Splits)
+# STEP 3: PROCESSING — Dataset Preparation (K-Core + Splits)
 # ==============================================================================
 
 
@@ -317,11 +316,11 @@ def create_step_data_splits(params, role, session, step_feng, step_embeddings):
     """
     Processing Job 3: Preparación de Datasets para Training.
     - Lee features de Platinum (output de Feature Engineering)
-    - Filtrado K-Core (usuarios/items con pocas interacciones)
+    - Aplica filtrado K-Core (usuarios/items con pocas interacciones)
     - Split temporal-estratificado: train 80% / val 10% / test 10%
-    - Persiste cold-starts
+    - Persiste cold-starts (datos descartados)
 
-    DEPENDENCIAS: Feature Engineering + Embeddings completados.
+    DEPENDENCIAS: Requiere que Feature Engineering Y Embeddings hayan completado.
     """
     sklearn_splits_processor = SKLearnProcessor(
         role=role,
@@ -333,6 +332,7 @@ def create_step_data_splits(params, role, session, step_feng, step_embeddings):
         tags=[
             {"Key": "project", "Value": "hymmrec"},
             {"Key": "phase", "Value": "dataset-preparation"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
     )
 
@@ -368,7 +368,7 @@ def create_step_data_splits(params, role, session, step_feng, step_embeddings):
                 output_name="cold_starts",
             ),
         ],
-        code=f"{PROCESSING_SCRIPTS_S3}/processing-prepare-data-splits.py",
+        code=os.path.join(PROCESSING_SCRIPTS_DIR, "processing-prepare-data-splits.py"),
         job_arguments=[
             "--min-user-interactions", "5",
             "--min-item-interactions", "5",
@@ -377,207 +377,31 @@ def create_step_data_splits(params, role, session, step_feng, step_embeddings):
         ],
     )
 
+    # Dependencias: esperar a que Feature Engineering y Embeddings terminen
     step_splits.add_depends_on([step_feng, step_embeddings])
+
     return step_splits
 
 
 # ==============================================================================
-# STEP 4: HPO Regression (Hyperparameter Tuning)
+# STEP 4: TRAINING — Regresión (Single-Head: Rating Prediction)
 # ==============================================================================
 
 
-def create_step_hpo_regression(params, role, session, step_splits):
+def create_step_training_regression(params, role, session, step_splits):
     """
-    HPO Job: Busca mejores hiperparámetros para modelo de regresión.
-    - Métrica objetivo: val_rmse_stars (Minimize)
-    - HP tunables: lr, batch_size, emb_dim, dropout, weight_decay
-    - Estrategia: Bayesian, 12 jobs, 3 en paralelo
+    Training Job: Modelo de Regresión (Single-Head).
+    - Predice rating escalado [0,1] con MSELoss
+    - Usa embeddings multimodales + features estructurales
+    - Métricas: RMSE en estrellas (1-5)
 
-    DEPENDENCIA: Data Splits completado.
-    """
-    regression_estimator = PyTorch(
-        entry_point="hpo_hymmrec_regression.py",
-        source_dir=TRAINING_SCRIPTS_S3,
-        role=role,
-        instance_type=DEFAULT_HPO_INSTANCE,
-        instance_count=1,
-        framework_version="2.1",
-        py_version="py310",
-        sagemaker_session=session,
-        base_job_name="hymmrec-hpo-regression",
-        hyperparameters={
-            "epochs": 15,
-            "patience": 2,
-            "num_workers": 2,
-        },
-        tags=[
-            {"Key": "project", "Value": "hymmrec"},
-            {"Key": "phase", "Value": "hpo-regression"},
-        ],
-        metric_definitions=[
-            {"Name": "val_rmse_stars", "Regex": r"val_rmse_stars=(.*?);"},
-            {"Name": "train_mse", "Regex": r"train_mse=(.*?);"},
-            {"Name": "val_mse", "Regex": r"val_mse=(.*?);"},
-            {"Name": "test_rmse_stars", "Regex": r"test_rmse_stars=(.*?);"},
-        ],
-    )
-
-    regression_hp_ranges = {
-        "lr": ContinuousParameter(0.0001, 0.01, scaling_type="Logarithmic"),
-        "batch_size": CategoricalParameter([128, 256, 512]),
-        "emb_dim": CategoricalParameter([32, 64, 128]),
-        "dropout": ContinuousParameter(0.1, 0.5),
-        "weight_decay": ContinuousParameter(1e-6, 1e-3, scaling_type="Logarithmic"),
-    }
-
-    regression_tuner = HyperparameterTuner(
-        estimator=regression_estimator,
-        objective_metric_name="val_rmse_stars",
-        hyperparameter_ranges=regression_hp_ranges,
-        metric_definitions=[
-            {"Name": "val_rmse_stars", "Regex": r"val_rmse_stars=(.*?);"},
-            {"Name": "train_mse", "Regex": r"train_mse=(.*?);"},
-            {"Name": "val_mse", "Regex": r"val_mse=(.*?);"},
-            {"Name": "test_rmse_stars", "Regex": r"test_rmse_stars=(.*?);"},
-        ],
-        objective_type="Minimize",
-        max_jobs=HPO_MAX_JOBS,
-        max_parallel_jobs=HPO_MAX_PARALLEL_JOBS,
-        strategy=HPO_STRATEGY,
-        base_tuning_job_name="hymmrec-hpo-reg",
-    )
-
-    step_hpo_regression = TuningStep(
-        name="HPORegression",
-        tuner=regression_tuner,
-        inputs={
-            "train": sagemaker.inputs.TrainingInput(
-                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
-                content_type="application/x-parquet",
-            ),
-            "embeddings": sagemaker.inputs.TrainingInput(
-                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
-                content_type="application/octet-stream",
-            ),
-        },
-    )
-
-    step_hpo_regression.add_depends_on([step_splits])
-    return step_hpo_regression
-
-
-# ==============================================================================
-# STEP 5: HPO Two-Heads (Hyperparameter Tuning)
-# ==============================================================================
-
-
-def create_step_hpo_twoheads(params, role, session, step_splits):
-    """
-    HPO Job: Busca mejores hiperparámetros para modelo Two-Heads.
-    - Métrica objetivo: val_bce (Minimize) — discriminación positivos vs negativos
-    - HP tunables: lr, batch_size, emb_dim, dropout, weight_decay
-    - neg_ratio=4 fijo (no tunable)
-    - Estrategia: Bayesian, 12 jobs, 3 en paralelo
-
-    DEPENDENCIA: Data Splits completado. Paralelo con HPO Regression.
-    """
-    twoheads_estimator = PyTorch(
-        entry_point="hpo_hymmrec_twoheads.py",
-        source_dir=TRAINING_SCRIPTS_S3,
-        role=role,
-        instance_type=DEFAULT_HPO_INSTANCE,
-        instance_count=1,
-        framework_version="2.1",
-        py_version="py310",
-        sagemaker_session=session,
-        base_job_name="hymmrec-hpo-twoheads",
-        hyperparameters={
-            "epochs": 15,
-            "patience": 3,
-            "num_workers": 2,
-            "neg_ratio": 4,
-        },
-        tags=[
-            {"Key": "project", "Value": "hymmrec"},
-            {"Key": "phase", "Value": "hpo-twoheads"},
-        ],
-        metric_definitions=[
-            {"Name": "val_bce", "Regex": r"val_bce=(.*?);"},
-            {"Name": "train_total_loss", "Regex": r"train_total_loss=(.*?);"},
-            {"Name": "val_total_loss", "Regex": r"val_total_loss=(.*?);"},
-            {"Name": "val_mse", "Regex": r"val_mse=(.*?);"},
-            {"Name": "val_rmse_stars", "Regex": r"val_rmse_stars=(.*?);"},
-            {"Name": "test_total_loss", "Regex": r"test_total_loss=(.*?);"},
-            {"Name": "test_rmse_stars", "Regex": r"test_rmse_stars=(.*?);"},
-        ],
-    )
-
-    twoheads_hp_ranges = {
-        "lr": ContinuousParameter(0.0001, 0.005, scaling_type="Logarithmic"),
-        "batch_size": CategoricalParameter([128, 256, 512]),
-        "emb_dim": CategoricalParameter([64, 128]),
-        "dropout": ContinuousParameter(0.1, 0.5),
-        "weight_decay": ContinuousParameter(1e-6, 1e-3, scaling_type="Logarithmic"),
-    }
-
-    twoheads_tuner = HyperparameterTuner(
-        estimator=twoheads_estimator,
-        objective_metric_name="val_bce",
-        hyperparameter_ranges=twoheads_hp_ranges,
-        metric_definitions=[
-            {"Name": "val_bce", "Regex": r"val_bce=(.*?);"},
-            {"Name": "train_total_loss", "Regex": r"train_total_loss=(.*?);"},
-            {"Name": "val_total_loss", "Regex": r"val_total_loss=(.*?);"},
-            {"Name": "val_mse", "Regex": r"val_mse=(.*?);"},
-            {"Name": "val_rmse_stars", "Regex": r"val_rmse_stars=(.*?);"},
-            {"Name": "test_total_loss", "Regex": r"test_total_loss=(.*?);"},
-            {"Name": "test_rmse_stars", "Regex": r"test_rmse_stars=(.*?);"},
-        ],
-        objective_type="Minimize",
-        max_jobs=HPO_MAX_JOBS,
-        max_parallel_jobs=HPO_MAX_PARALLEL_JOBS,
-        strategy=HPO_STRATEGY,
-        base_tuning_job_name="hymmrec-hpo-th",
-    )
-
-    step_hpo_twoheads = TuningStep(
-        name="HPOTwoHeads",
-        tuner=twoheads_tuner,
-        inputs={
-            "train": sagemaker.inputs.TrainingInput(
-                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
-                content_type="application/x-parquet",
-            ),
-            "embeddings": sagemaker.inputs.TrainingInput(
-                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
-                content_type="application/octet-stream",
-            ),
-        },
-    )
-
-    step_hpo_twoheads.add_depends_on([step_splits])
-    return step_hpo_twoheads
-
-
-# ==============================================================================
-# STEP 6: Training Final — Regression (con mejores HPs del HPO)
-# ==============================================================================
-
-
-def create_step_training_regression(params, role, session, step_hpo_regression):
-    """
-    Training Job Final: Modelo de Regresión con mejores HPs del HPO.
-    - Usa get_top_model_s3_uri() del TuningStep para obtener el mejor modelo
-    - Más épocas (30) y más paciencia (5) que en HPO
-    - Output: model.tar.gz con model.pth + model_metadata.json
-
-    DEPENDENCIA: HPO Regression completado.
+    DEPENDENCIA: Requiere que Data Splits haya completado.
     """
     regression_estimator = PyTorch(
         entry_point="train_hymmrec_regression.py",
-        source_dir=TRAINING_SCRIPTS_S3,
+        source_dir=TRAINING_SCRIPTS_DIR,
         role=role,
-        instance_type=DEFAULT_TRAINING_INSTANCE,
+        instance_type=params["training_instance_type"],
         instance_count=1,
         framework_version="2.1",
         py_version="py310",
@@ -585,8 +409,13 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
         base_job_name="hymmrec-train-regression",
         output_path=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/models/regression/",
         hyperparameters={
-            "epochs": 30,
+            "epochs": params["epochs"],
             "patience": 5,
+            "batch_size": params["batch_size"],
+            "lr": params["learning_rate"],
+            "emb_dim": params["emb_dim"],
+            "dropout": params["dropout"],
+            "weight_decay": 1e-5,
             "num_workers": 2,
             "scheduler_patience": 2,
             "scheduler_factor": 0.5,
@@ -594,7 +423,8 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
         },
         tags=[
             {"Key": "project", "Value": "hymmrec"},
-            {"Key": "phase", "Value": "training-regression-final"},
+            {"Key": "phase", "Value": "training-regression"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
         metric_definitions=[
             {"Name": "train_mse", "Regex": r"train_mse=(.*?);"},
@@ -606,48 +436,50 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
 
     step_train_regression = TrainingStep(
         name="TrainingRegression",
-        step_args=regression_estimator.fit(
-            inputs={
-                "train": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
-                    content_type="application/x-parquet",
-                ),
-                "embeddings": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
-                    content_type="application/octet-stream",
-                ),
-                "encoders": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
-                    content_type="application/octet-stream",
-                ),
-            },
-        ),
+        estimator=regression_estimator,
+        inputs={
+            "train": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
+                content_type="application/x-parquet",
+            ),
+            "embeddings": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
+                content_type="application/octet-stream",
+            ),
+            "encoders": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
+                content_type="application/octet-stream",
+            ),
+        },
     )
 
-    step_train_regression.add_depends_on([step_hpo_regression])
+    # Dependencia: requiere Data Splits completado
+    step_train_regression.add_depends_on([step_splits])
+
     return step_train_regression
 
 
 # ==============================================================================
-# STEP 7: Training Final — Two-Heads (con mejores HPs del HPO)
+# STEP 5: TRAINING — Multi-Task Two-Heads (Retrieval + Calidad)
 # ==============================================================================
 
 
-def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
+def create_step_training_twoheads(params, role, session, step_splits):
     """
-    Training Job Final: Modelo Multi-Task Two-Heads con mejores HPs del HPO.
-    - Cabeza 1: BCE (ranking/retrieval) sobre todos los datos
-    - Cabeza 2: MSE (calidad) enmascarado solo sobre positivos
-    - neg_ratio=4 fijo
-    - Más épocas (30) y más paciencia (5) que en HPO
+    Training Job: Modelo Multi-Task Two-Heads.
+    - Cabeza 1: BCE (ranking/retrieval) sobre TODOS los datos
+    - Cabeza 2: MSE (calidad) ENMASCARADO solo sobre interacciones positivas
+    - Loss Total = BCE + MSE(positivos)
+    - Arquitectura Two-Tower con atención multimodal explicable
 
-    DEPENDENCIA: HPO Two-Heads completado.
+    DEPENDENCIA: Requiere que Data Splits haya completado.
+    Puede correr EN PARALELO con Training Regression.
     """
     twoheads_estimator = PyTorch(
         entry_point="train_hymmrec_twoheads.py",
-        source_dir=TRAINING_SCRIPTS_S3,
+        source_dir=TRAINING_SCRIPTS_DIR,
         role=role,
-        instance_type=DEFAULT_TRAINING_INSTANCE,
+        instance_type=params["training_instance_type"],
         instance_count=1,
         framework_version="2.1",
         py_version="py310",
@@ -655,8 +487,13 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
         base_job_name="hymmrec-train-twoheads",
         output_path=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/models/twoheads/",
         hyperparameters={
-            "epochs": 30,
+            "epochs": params["epochs"],
             "patience": 5,
+            "batch_size": params["batch_size"],
+            "lr": params["learning_rate"],
+            "emb_dim": params["emb_dim"],
+            "dropout": params["dropout"],
+            "weight_decay": 1e-5,
             "neg_ratio": 4,
             "num_workers": 2,
             "scheduler_patience": 2,
@@ -665,7 +502,8 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
         },
         tags=[
             {"Key": "project", "Value": "hymmrec"},
-            {"Key": "phase", "Value": "training-twoheads-final"},
+            {"Key": "phase", "Value": "training-twoheads"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
         metric_definitions=[
             {"Name": "train_total_loss", "Regex": r"train_total_loss=(.*?);"},
@@ -680,45 +518,49 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
 
     step_train_twoheads = TrainingStep(
         name="TrainingTwoHeads",
-        step_args=twoheads_estimator.fit(
-            inputs={
-                "train": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
-                    content_type="application/x-parquet",
-                ),
-                "embeddings": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
-                    content_type="application/octet-stream",
-                ),
-                "encoders": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
-                    content_type="application/octet-stream",
-                ),
-            },
-        ),
+        estimator=twoheads_estimator,
+        inputs={
+            "train": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
+                content_type="application/x-parquet",
+            ),
+            "embeddings": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
+                content_type="application/octet-stream",
+            ),
+            "encoders": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
+                content_type="application/octet-stream",
+            ),
+        },
     )
 
-    step_train_twoheads.add_depends_on([step_hpo_twoheads])
+    # Dependencia: requiere Data Splits completado
+    step_train_twoheads.add_depends_on([step_splits])
+
     return step_train_twoheads
 
 
 # ==============================================================================
-# STEP 8: Model Evaluation (Processing Job)
+# STEP 6: EVALUATION — Evaluación Comparativa de Modelos
 # ==============================================================================
 
 
-def create_step_evaluation(params, role, session, step_train_regression, step_train_twoheads):
+def create_step_evaluation(
+    params, role, session, step_train_regression, step_train_twoheads
+):
     """
     Evaluation Job: Evalúa ambos modelos sobre test + cold-start.
     - Métricas: RMSE, NDCG@K, HR@K, Precision@K, Recall@K, F1
+    - Genera reportes JSON con métricas completas
     - Selecciona modelo ganador automáticamente (hybrid score)
-    - Output: evaluation_report.json con winner_rmse_stars
+    - Output: evaluation_report.json con rmse_stars del ganador
 
-    DEPENDENCIA: Ambos Training Jobs completados.
+    DEPENDENCIA: Requiere que AMBOS Training Jobs hayan completado.
     """
     eval_processor = PyTorchProcessor(
         role=role,
-        instance_type=DEFAULT_EVAL_INSTANCE,
+        instance_type=params["eval_instance_type"],
         instance_count=1,
         framework_version="2.1",
         py_version="py310",
@@ -727,9 +569,11 @@ def create_step_evaluation(params, role, session, step_train_regression, step_tr
         tags=[
             {"Key": "project", "Value": "hymmrec"},
             {"Key": "phase", "Value": "evaluation"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
     )
 
+    # PropertyFile para capturar métricas y usarlas en el ConditionStep
     evaluation_report = PropertyFile(
         name="EvaluationReport",
         output_name="reports",
@@ -778,7 +622,7 @@ def create_step_evaluation(params, role, session, step_train_regression, step_tr
                 output_name="winner",
             ),
         ],
-        code=f"{EVALUATION_SCRIPTS_S3}/evaluation-job.py",
+        code=os.path.join(EVALUATION_SCRIPTS_DIR, "evaluation-job.py"),
         job_arguments=["--k", "10", "--num-decoys", "99"],
         property_files=[evaluation_report],
     )
@@ -787,24 +631,40 @@ def create_step_evaluation(params, role, session, step_train_regression, step_tr
 
 
 # ==============================================================================
-# STEP 9: Model Registry
+# STEP 7: MODEL REGISTRY — Registro del Modelo Ganador
 # ==============================================================================
 
 
-def create_step_register_model(params, role, session, step_train_regression, step_train_twoheads):
+def create_step_register_model(
+    params, role, session, step_eval, step_train_regression, step_train_twoheads
+):
     """
-    Model Registry: Registra ambos modelos en SageMaker Model Registry.
-    - Status: PendingManualApproval
-    - El evaluation job determina el ganador en metadata
+    Model Registry: Registra el modelo ganador en SageMaker Model Registry.
+    - Adjunta métricas de evaluación como metadata
+    - Status: PendingManualApproval (requiere aprobación humana)
+    - Soporte para deploy en ml.m5.large / ml.c5.large
+
+    NOTA: Se registran AMBOS modelos (regresión y two-heads) como candidatos.
+    El evaluation job determina cuál es el ganador en los metadatos.
     """
-    # Registrar modelo Two-Heads
+    # Imagen de inferencia PyTorch
+    inference_image_uri = sagemaker.image_uris.retrieve(
+        framework="pytorch",
+        region="us-east-1",
+        version="2.1",
+        py_version="py310",
+        instance_type="ml.m5.large",
+        image_scope="inference",
+    )
+
+    # Registrar modelo Two-Heads (modelo principal para retrieval + calidad)
     step_register_twoheads = RegisterModel(
         name="RegisterModelTwoHeads",
         estimator=PyTorch(
             entry_point="train_hymmrec_twoheads.py",
-            source_dir=TRAINING_SCRIPTS_S3,
+            source_dir=TRAINING_SCRIPTS_DIR,
             role=role,
-            instance_type=DEFAULT_TRAINING_INSTANCE,
+            instance_type=params["training_instance_type"],
             instance_count=1,
             framework_version="2.1",
             py_version="py310",
@@ -818,20 +678,20 @@ def create_step_register_model(params, role, session, step_train_regression, ste
         model_package_group_name=MODEL_PACKAGE_GROUP_NAME,
         approval_status="PendingManualApproval",
         description=(
-            "HYMM-REC Two-Heads: Recomendador híbrido multimodal. "
-            "Two-Tower con atención multimodal explicable. "
-            "BCE(ranking) + MSE(calidad enmascarado)."
+            "HYMM-REC Two-Heads: Sistema recomendador híbrido multimodal. "
+            "Arquitectura Two-Tower con atención multimodal explicable. "
+            "Cabeza ranking (BCE) + Cabeza calidad (MSE enmascarado)."
         ),
     )
 
-    # Registrar modelo Regresión
+    # Registrar modelo Regresión (alternativa para rating prediction puro)
     step_register_regression = RegisterModel(
         name="RegisterModelRegression",
         estimator=PyTorch(
             entry_point="train_hymmrec_regression.py",
-            source_dir=TRAINING_SCRIPTS_S3,
+            source_dir=TRAINING_SCRIPTS_DIR,
             role=role,
-            instance_type=DEFAULT_TRAINING_INSTANCE,
+            instance_type=params["training_instance_type"],
             instance_count=1,
             framework_version="2.1",
             py_version="py310",
@@ -845,8 +705,8 @@ def create_step_register_model(params, role, session, step_train_regression, ste
         model_package_group_name=MODEL_PACKAGE_GROUP_NAME,
         approval_status="PendingManualApproval",
         description=(
-            "HYMM-REC Regression: Predicción de rating puro. "
-            "Single-Head MSELoss sobre rating escalado [0,1]."
+            "HYMM-REC Regression: Modelo de predicción de rating puro. "
+            "Single-Head con MSELoss sobre rating escalado [0,1]."
         ),
     )
 
@@ -854,16 +714,21 @@ def create_step_register_model(params, role, session, step_train_regression, ste
 
 
 # ==============================================================================
-# STEP 10: Model Packaging
+# STEP 8: MODEL PACKAGING — Extracción de Torres Independientes
 # ==============================================================================
 
 
-def create_step_model_packaging(params, role, session, step_register_twoheads):
+def create_step_model_packaging(
+    params, role, session, step_register_twoheads, step_eval
+):
     """
     Model Packaging: Extrae UserTower, ItemTower y FullModel como artefactos
-    separados con inference.py para deploy independiente.
+    separados, cada uno con su inference.py para deploy independiente.
+    - Full Model → Endpoint real-time (predicción completa)
+    - User Tower → Endpoint real-time (embedding de usuario para OpenSearch)
+    - Item Tower → Batch Transform offline (índice de embeddings)
 
-    DEPENDENCIA: Model Registry completado.
+    DEPENDENCIA: Requiere que Model Registry haya completado.
     """
     packaging_processor = PyTorchProcessor(
         role=role,
@@ -876,6 +741,7 @@ def create_step_model_packaging(params, role, session, step_register_twoheads):
         tags=[
             {"Key": "project", "Value": "hymmrec"},
             {"Key": "phase", "Value": "model-packaging"},
+            {"Key": "pipeline", "Value": PIPELINE_NAME},
         ],
     )
 
@@ -911,27 +777,36 @@ def create_step_model_packaging(params, role, session, step_register_twoheads):
                 output_name="item_tower",
             ),
         ],
-        code=f"{EVALUATION_SCRIPTS_S3}/model-packaging-job.py",
+        code=os.path.join(EVALUATION_SCRIPTS_DIR, "model-packaging-job.py"),
     )
 
+    # Dependencia: requiere que el registro del modelo haya completado
     step_packaging.add_depends_on([step_register_twoheads])
+
     return step_packaging
 
 
 # ==============================================================================
-# STEP 11: Quality Gate (Condition)
+# STEP 9: CONDITION — Quality Gate (RMSE Threshold)
 # ==============================================================================
 
 
 def create_condition_quality_gate(
-    params, evaluation_report, step_eval,
-    step_register_twoheads, step_register_regression, step_packaging,
+    params,
+    evaluation_report,
+    step_eval,
+    step_register_twoheads,
+    step_register_regression,
+    step_packaging,
 ):
     """
-    Quality Gate: RMSE del modelo ganador <= threshold.
-    - PASS → Registra modelos + Packaging
-    - FAIL → FailStep con mensaje descriptivo
+    Quality Gate: Condición que verifica si el modelo ganador cumple con
+    el umbral de calidad mínimo (RMSE en estrellas <= threshold).
+
+    Si PASA → Registra ambos modelos en Model Registry + Packaging
+    Si FALLA → FailStep con mensaje descriptivo
     """
+    # Condición: RMSE del modelo ganador <= umbral máximo
     cond_rmse = ConditionLessThanOrEqualTo(
         left=JsonGet(
             step_name=step_eval.name,
@@ -941,15 +816,17 @@ def create_condition_quality_gate(
         right=params["max_rmse_threshold"],
     )
 
+    # Paso de fallo si no supera el quality gate
     step_fail = FailStep(
         name="QualityGateFailed",
         error_message=(
             "El modelo ganador NO supera el umbral de calidad. "
             "RMSE en estrellas supera el máximo permitido. "
-            "Revisa hiperparámetros, datos, o ajusta el threshold."
+            "Revisa los hiperparámetros, datos de entrenamiento, o ajusta el threshold."
         ),
     )
 
+    # ConditionStep: bifurcación del DAG
     step_condition = ConditionStep(
         name="QualityGateCheck",
         conditions=[cond_rmse],
@@ -961,7 +838,7 @@ def create_condition_quality_gate(
 
 
 # ==============================================================================
-# BUILD PIPELINE (ensambla el DAG completo)
+# DEFINICIÓN DEL PIPELINE COMPLETO
 # ==============================================================================
 
 
@@ -971,23 +848,26 @@ def build_pipeline(
     pipeline_name: str = PIPELINE_NAME,
 ) -> Pipeline:
     """
-    Construye el SageMaker Pipeline completo.
+    Construye el SageMaker Pipeline completo con el DAG:
 
-    DAG:
       FeatureEngineering ──┐
-                           ├──► DatasetPreparation ──┬──► HPORegression ──► TrainingRegression ──┐
-      EmbeddingsGeneration ┘                         └──► HPOTwoHeads  ──► TrainingTwoHeads  ───┤
-                                                                                                ▼
-                                                                                        ModelEvaluation
-                                                                                                │
-                                                                                                ▼
-                                                                                      QualityGateCheck
-                                                                                       ┌────┴────┐
-                                                                                  Pass │         │ Fail
-                                                                                       ▼         ▼
-                                                                              RegisterModel   FailStep
-                                                                              + Packaging
+                           ├──► DatasetPreparation ──► TrainingRegression  ──┐
+      EmbeddingsGeneration ┘                      └──► TrainingTwoHeads  ───┤
+                                                                            ▼
+                                                                    ModelEvaluation
+                                                                            │
+                                                                            ▼
+                                                                  QualityGateCheck
+                                                                   ┌────┴────┐
+                                                              Pass │         │ Fail
+                                                                   ▼         ▼
+                                                          RegisterModel   FailStep
+                                                          + Packaging
+
+    Returns:
+        Pipeline: Objeto SageMaker Pipeline listo para upsert/start.
     """
+    # --- Sesión y Role ---
     boto_session = boto3.Session(region_name=region)
     sm_session = sagemaker.Session(boto_session=boto_session)
 
@@ -997,76 +877,73 @@ def build_pipeline(
         try:
             role = get_execution_role()
         except ValueError:
+            # Fuera de SageMaker notebook, intentar obtener del env
             role = os.environ.get(
                 "SAGEMAKER_ROLE_ARN",
                 "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
             )
 
-    logger.info(f"Building pipeline: {pipeline_name} | Region: {region}")
+    logger.info(f"Construyendo pipeline: {pipeline_name}")
+    logger.info(f"Region: {region}")
     logger.info(f"Role: {role}")
-    logger.info(f"Scripts S3 base: {SCRIPTS_S3_BASE}")
 
-    # --- Parameters ---
+    # --- Parámetros ---
     params = define_pipeline_parameters()
 
-    # --- Step 1: Feature Engineering ---
+    # --- Step 1: Feature Engineering (PySpark) ---
     step_feng = create_step_feature_engineering(params, role, sm_session)
-    logger.info("  [1/11] FeatureEngineering")
+    logger.info("✓ Step definido: FeatureEngineering")
 
-    # --- Step 2: Embeddings ---
+    # --- Step 2: Embeddings Generation (SKLearn + Bedrock) ---
     step_embeddings = create_step_embeddings(params, role, sm_session)
-    logger.info("  [2/11] EmbeddingsGeneration")
+    logger.info("✓ Step definido: EmbeddingsGeneration")
 
-    # --- Step 3: Data Splits ---
+    # --- Step 3: Dataset Preparation (SKLearn) ---
     step_splits = create_step_data_splits(params, role, sm_session, step_feng, step_embeddings)
-    logger.info("  [3/11] DatasetPreparation")
+    logger.info("✓ Step definido: DatasetPreparation")
 
-    # --- Step 4: HPO Regression ---
-    step_hpo_regression = create_step_hpo_regression(params, role, sm_session, step_splits)
-    logger.info("  [4/11] HPORegression")
-
-    # --- Step 5: HPO Two-Heads ---
-    step_hpo_twoheads = create_step_hpo_twoheads(params, role, sm_session, step_splits)
-    logger.info("  [5/11] HPOTwoHeads")
-
-    # --- Step 6: Training Regression ---
+    # --- Step 4: Training Regression ---
     step_train_regression = create_step_training_regression(
-        params, role, sm_session, step_hpo_regression
+        params, role, sm_session, step_splits
     )
-    logger.info("  [6/11] TrainingRegression")
+    logger.info("✓ Step definido: TrainingRegression")
 
-    # --- Step 7: Training Two-Heads ---
+    # --- Step 5: Training Two-Heads ---
     step_train_twoheads = create_step_training_twoheads(
-        params, role, sm_session, step_hpo_twoheads
+        params, role, sm_session, step_splits
     )
-    logger.info("  [7/11] TrainingTwoHeads")
+    logger.info("✓ Step definido: TrainingTwoHeads")
 
-    # --- Step 8: Evaluation ---
+    # --- Step 6: Evaluation ---
     step_eval, evaluation_report = create_step_evaluation(
         params, role, sm_session, step_train_regression, step_train_twoheads
     )
-    logger.info("  [8/11] ModelEvaluation")
+    logger.info("✓ Step definido: ModelEvaluation")
 
-    # --- Step 9: Model Registry ---
+    # --- Step 7: Model Registry ---
     step_register_twoheads, step_register_regression = create_step_register_model(
-        params, role, sm_session, step_train_regression, step_train_twoheads
+        params, role, sm_session, step_eval, step_train_regression, step_train_twoheads
     )
-    logger.info("  [9/11] RegisterModel (TwoHeads + Regression)")
+    logger.info("✓ Step definido: RegisterModel (TwoHeads + Regression)")
 
-    # --- Step 10: Model Packaging ---
+    # --- Step 8: Model Packaging ---
     step_packaging = create_step_model_packaging(
-        params, role, sm_session, step_register_twoheads
+        params, role, sm_session, step_register_twoheads, step_eval
     )
-    logger.info("  [10/11] ModelPackaging")
+    logger.info("✓ Step definido: ModelPackaging")
 
-    # --- Step 11: Quality Gate ---
+    # --- Step 9: Quality Gate (Condition) ---
     step_condition = create_condition_quality_gate(
-        params, evaluation_report, step_eval,
-        step_register_twoheads, step_register_regression, step_packaging,
+        params,
+        evaluation_report,
+        step_eval,
+        step_register_twoheads,
+        step_register_regression,
+        step_packaging,
     )
-    logger.info("  [11/11] QualityGateCheck")
+    logger.info("✓ Step definido: QualityGateCheck")
 
-    # --- Assemble Pipeline ---
+    # --- Ensamblar Pipeline ---
     pipeline = Pipeline(
         name=pipeline_name,
         parameters=[
@@ -1083,8 +960,6 @@ def build_pipeline(
             params["learning_rate"],
             params["emb_dim"],
             params["dropout"],
-            params["hpo_max_jobs"],
-            params["hpo_max_parallel"],
             params["min_user_interactions"],
             params["min_item_interactions"],
             params["train_ratio"],
@@ -1095,8 +970,6 @@ def build_pipeline(
             step_feng,
             step_embeddings,
             step_splits,
-            step_hpo_regression,
-            step_hpo_twoheads,
             step_train_regression,
             step_train_twoheads,
             step_eval,
@@ -1105,12 +978,12 @@ def build_pipeline(
         sagemaker_session=sm_session,
     )
 
-    logger.info(f"Pipeline '{pipeline_name}' built with {len(pipeline.steps)} steps.")
+    logger.info(f"Pipeline '{pipeline_name}' construido con {len(pipeline.steps)} steps.")
     return pipeline
 
 
 # ==============================================================================
-# UTILITY FUNCTIONS
+# EXPORTAR JSON / UPSERT / EJECUTAR
 # ==============================================================================
 
 
@@ -1119,7 +992,7 @@ def export_pipeline_json(pipeline: Pipeline, output_path: str) -> dict:
     definition = json.loads(pipeline.definition())
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(definition, f, indent=2, ensure_ascii=False)
-    logger.info(f"Pipeline JSON exported: {output_path}")
+    logger.info(f"Pipeline JSON exportado a: {output_path}")
     return definition
 
 
@@ -1127,15 +1000,17 @@ def upsert_pipeline(pipeline: Pipeline, role_arn: str) -> str:
     """Crea o actualiza el pipeline en SageMaker."""
     response = pipeline.upsert(role_arn=role_arn)
     pipeline_arn = response["PipelineArn"]
-    logger.info(f"Pipeline upserted: {pipeline_arn}")
+    logger.info(f"Pipeline creado/actualizado: {pipeline_arn}")
     return pipeline_arn
 
 
 def start_pipeline(pipeline: Pipeline, parameters: Optional[dict] = None) -> str:
     """Inicia una ejecución del pipeline."""
     execution = pipeline.start(parameters=parameters or {})
-    logger.info(f"Pipeline execution started: {execution.arn}")
-    return execution.arn
+    execution_arn = execution.arn
+    logger.info(f"Pipeline ejecutándose: {execution_arn}")
+    logger.info(f"Estado: {execution.describe()['PipelineExecutionStatus']}")
+    return execution_arn
 
 
 # ==============================================================================
@@ -1145,12 +1020,11 @@ def start_pipeline(pipeline: Pipeline, parameters: Optional[dict] = None) -> str
 
 def main():
     parser = argparse.ArgumentParser(
-        description="HYMM-REC SageMaker Pipeline (HPO + CI/CD Ready)",
+        description="Define y gestiona el SageMaker Pipeline de HYMM-REC MLOps.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Ejemplos de uso:
-
-  # Exportar JSON de definición (para inspección):
+Ejemplos:
+  # Exportar JSON de definición:
   python define_sagemaker_pipeline.py --export-json pipeline_definition.json
 
   # Crear/actualizar pipeline en SageMaker:
@@ -1159,76 +1033,98 @@ Ejemplos de uso:
   # Crear y ejecutar inmediatamente:
   python define_sagemaker_pipeline.py --execute
 
-  # Desde CI/CD (Azure DevOps) con role explícito:
-  python define_sagemaker_pipeline.py --upsert --execute \\
+  # Con parámetros personalizados:
+  python define_sagemaker_pipeline.py --execute --region us-east-1 \\
       --role-arn arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev
         """,
     )
 
-    parser.add_argument("--region", type=str, default="us-east-1")
-    parser.add_argument("--role-arn", type=str, default=None)
-    parser.add_argument("--pipeline-name", type=str, default=PIPELINE_NAME)
-    parser.add_argument("--export-json", type=str, default=None, metavar="PATH")
-    parser.add_argument("--upsert", action="store_true")
-    parser.add_argument("--execute", action="store_true")
+    parser.add_argument(
+        "--region", type=str, default="us-east-1", help="AWS Region (default: us-east-1)"
+    )
+    parser.add_argument(
+        "--role-arn", type=str, default=None, help="SageMaker Execution Role ARN"
+    )
+    parser.add_argument(
+        "--pipeline-name",
+        type=str,
+        default=PIPELINE_NAME,
+        help=f"Nombre del pipeline (default: {PIPELINE_NAME})",
+    )
+    parser.add_argument(
+        "--export-json",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Exportar definición JSON del pipeline a un archivo",
+    )
+    parser.add_argument(
+        "--upsert",
+        action="store_true",
+        help="Crear o actualizar el pipeline en SageMaker",
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Crear/actualizar Y ejecutar el pipeline",
+    )
 
     args = parser.parse_args()
 
-    # Build pipeline
+    # Construir pipeline
     pipeline = build_pipeline(
         region=args.region,
         role_arn=args.role_arn,
         pipeline_name=args.pipeline_name,
     )
 
-    # Determine role
+    # Determinar role para upsert
     role = args.role_arn or os.environ.get(
         "SAGEMAKER_ROLE_ARN",
         "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
     )
 
-    # Export JSON
+    # Exportar JSON
     if args.export_json:
         export_pipeline_json(pipeline, args.export_json)
 
-    # Default: export JSON if no action specified
+    # Si no se especificó ninguna acción, exportar JSON por defecto
     if not args.export_json and not args.upsert and not args.execute:
         default_path = "pipeline_definition.json"
         definition = export_pipeline_json(pipeline, default_path)
-        print(f"\n{'='*70}")
-        print("HYMM-REC SAGEMAKER PIPELINE DEFINITION (con HPO)")
-        print(f"{'='*70}")
-        print(f"  Archivo:     {default_path}")
-        print(f"  Pipeline:    {args.pipeline_name}")
-        print(f"  Steps:       {len(definition.get('Steps', []))}")
-        print(f"  Parameters:  {len(definition.get('Parameters', []))}")
+        print(f"\n{'='*60}")
+        print(f"PIPELINE DEFINITION GENERADA")
+        print(f"{'='*60}")
+        print(f"  Archivo: {default_path}")
+        print(f"  Pipeline: {args.pipeline_name}")
+        print(f"  Steps: {len(definition.get('Steps', []))}")
+        print(f"  Parameters: {len(definition.get('Parameters', []))}")
         print(f"\nDAG del Pipeline:")
         print(f"  1. FeatureEngineering (PySpark)")
         print(f"  2. EmbeddingsGeneration (SKLearn + Bedrock Nova)")
         print(f"  3. DatasetPreparation (SKLearn) [depends: 1, 2]")
-        print(f"  4. HPORegression (Bayesian, {HPO_MAX_JOBS} jobs) [depends: 3]")
-        print(f"  5. HPOTwoHeads (Bayesian, {HPO_MAX_JOBS} jobs) [depends: 3]")
-        print(f"  6. TrainingRegression (PyTorch GPU) [depends: 4]")
-        print(f"  7. TrainingTwoHeads (PyTorch GPU) [depends: 5]")
-        print(f"  8. ModelEvaluation (PyTorch GPU) [depends: 6, 7]")
-        print(f"  9. QualityGateCheck (Condition: RMSE <= threshold)")
-        print(f"     +-- PASS: RegisterModel (TwoHeads + Regression) -> ModelPackaging")
-        print(f"     +-- FAIL: QualityGateFailed (FailStep)")
-        print(f"\nScripts S3: {SCRIPTS_S3_BASE}/")
-        print(f"\nPara crear en SageMaker:  python define_sagemaker_pipeline.py --upsert")
-        print(f"Para ejecutar:            python define_sagemaker_pipeline.py --execute")
+        print(f"  4. TrainingRegression (PyTorch GPU) [depends: 3]")
+        print(f"  5. TrainingTwoHeads (PyTorch GPU) [depends: 3]")
+        print(f"  6. ModelEvaluation (PyTorch GPU) [depends: 4, 5]")
+        print(f"  7. QualityGateCheck (Condition: RMSE <= threshold)")
+        print(f"     ├─ PASS: RegisterModel (TwoHeads + Regression) → ModelPackaging")
+        print(f"     └─ FAIL: QualityGateFailed (FailStep)")
+        print(f"\nPara crear el pipeline en SageMaker:")
+        print(f"  python define_sagemaker_pipeline.py --upsert")
+        print(f"\nPara ejecutar:")
+        print(f"  python define_sagemaker_pipeline.py --execute")
         return
 
     # Upsert
     if args.upsert or args.execute:
         pipeline_arn = upsert_pipeline(pipeline, role)
-        print(f"\n Pipeline registrado: {pipeline_arn}")
+        print(f"\n✅ Pipeline registrado: {pipeline_arn}")
 
-    # Execute
+    # Ejecutar
     if args.execute:
         execution_arn = start_pipeline(pipeline)
-        print(f"\n Pipeline en ejecucion: {execution_arn}")
-        print(f"   Monitor: SageMaker Studio -> Pipelines -> {args.pipeline_name}")
+        print(f"\n🚀 Pipeline en ejecución: {execution_arn}")
+        print(f"   Monitor en SageMaker Studio → Pipelines → {args.pipeline_name}")
 
 
 if __name__ == "__main__":

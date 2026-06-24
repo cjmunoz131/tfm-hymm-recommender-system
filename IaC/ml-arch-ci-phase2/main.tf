@@ -92,6 +92,103 @@ module "aws-ml-compute-model-dev-domain-sagemaker-layer-module" {
 }
 
 
+# ==============================================================================
+# SAGEMAKER PIPELINE SCRIPTS — Upload dev/ scripts to S3
+# ==============================================================================
+# Terraform sube recursivamente los scripts de processing, training, evaluation
+# e inference a S3 para que el SageMaker Pipeline los referencie en runtime.
+# Estructura en S3:
+#   s3://hymmrec-sagemaker-assets/sagemaker-scripts/
+#     ├── feng-data-preparing/   (processing scripts)
+#     ├── training/              (HPO + training scripts + dependencies)
+#     ├── evaluation/            (evaluation + packaging scripts)
+#     └── inference/             (inference scripts)
+# ==============================================================================
+
+locals {
+  sagemaker_scripts_bucket = var.sagemaker_scripts_bucket
+  scripts_s3_prefix        = "sagemaker-scripts"
+
+  # Collect all .py files from dev/ subdirectories (excluding notebook-scripts/)
+  processing_scripts = fileset("${path.module}/dev/feng-data-preparing", "*.py")
+  training_scripts   = fileset("${path.module}/dev/training", "*.py")
+  evaluation_scripts = fileset("${path.module}/dev/evaluation", "*.py")
+  inference_scripts  = fileset("${path.module}/dev/inference", "*.py")
+}
+
+# --- Processing scripts (feng-data-preparing) ---
+resource "aws_s3_object" "processing_scripts" {
+  provider = aws.account1
+  for_each = local.processing_scripts
+
+  bucket       = local.sagemaker_scripts_bucket
+  key          = "${local.scripts_s3_prefix}/feng-data-preparing/${each.value}"
+  source       = "${path.module}/dev/feng-data-preparing/${each.value}"
+  etag         = filemd5("${path.module}/dev/feng-data-preparing/${each.value}")
+  content_type = "text/x-python"
+
+  tags = {
+    project = var.project
+    phase   = "processing"
+  }
+}
+
+# --- Training scripts (HPO + train + dependencies) ---
+resource "aws_s3_object" "training_scripts" {
+  provider = aws.account1
+  for_each = local.training_scripts
+
+  bucket       = local.sagemaker_scripts_bucket
+  key          = "${local.scripts_s3_prefix}/training/${each.value}"
+  source       = "${path.module}/dev/training/${each.value}"
+  etag         = filemd5("${path.module}/dev/training/${each.value}")
+  content_type = "text/x-python"
+
+  tags = {
+    project = var.project
+    phase   = "training"
+  }
+}
+
+# --- Evaluation scripts ---
+resource "aws_s3_object" "evaluation_scripts" {
+  provider = aws.account1
+  for_each = local.evaluation_scripts
+
+  bucket       = local.sagemaker_scripts_bucket
+  key          = "${local.scripts_s3_prefix}/evaluation/${each.value}"
+  source       = "${path.module}/dev/evaluation/${each.value}"
+  etag         = filemd5("${path.module}/dev/evaluation/${each.value}")
+  content_type = "text/x-python"
+
+  tags = {
+    project = var.project
+    phase   = "evaluation"
+  }
+}
+
+# --- Inference scripts ---
+resource "aws_s3_object" "inference_scripts" {
+  provider = aws.account1
+  for_each = local.inference_scripts
+
+  bucket       = local.sagemaker_scripts_bucket
+  key          = "${local.scripts_s3_prefix}/inference/${each.value}"
+  source       = "${path.module}/dev/inference/${each.value}"
+  etag         = filemd5("${path.module}/dev/inference/${each.value}")
+  content_type = "text/x-python"
+
+  tags = {
+    project = var.project
+    phase   = "inference"
+  }
+}
+
+
+# ==============================================================================
+# SECURITY GROUP — SageMaker Domain Studio
+# ==============================================================================
+
 resource "aws_security_group" "sagemaker_sg" {
   provider    = aws.account1
   name        = "sagemaker-domainstudio-${var.project}-sg"

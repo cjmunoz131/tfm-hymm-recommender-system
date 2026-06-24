@@ -113,3 +113,14 @@ variable "efs_retention_policy" {
   type        = string
   default     = "Retain"
 }
+
+
+# ==============================================================================
+# SageMaker Pipeline — Scripts S3 Bucket
+# ==============================================================================
+
+variable "sagemaker_scripts_bucket" {
+  description = "S3 bucket where SageMaker pipeline scripts are uploaded (Platinum bucket)"
+  type        = string
+  default     = "hymmrec-sagemaker-assets"
+}
