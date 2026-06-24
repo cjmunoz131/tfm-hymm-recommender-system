@@ -77,3 +77,39 @@ variable "package_group_name" {
   description = "package group name"
   default = "model"
 }
+
+variable "sagemaker_domain_auth_mode" {
+  description = "(Required) The mode of authentication that members use to access the domain. Valid values are IAM and SSO"
+  type        = string
+  default     = "IAM"
+}
+
+variable "sagemaker_domain_app_network_access_type" {
+  description = "network access type for sagemaker domain"
+  type        = string
+  default     = "PublicInternetOnly"
+}
+
+variable "vpc_id" {
+  description = "vpc id"
+  type = string
+  default = "vpc-06c6dbcb8d69b1cd0"
+}
+
+variable "private_subnet_id_list" {
+  description = "private subnet id list"
+  type = set(string)
+  default = [ "subnet-02aded95c1836461e", "subnet-01b39e3bc54ae2bec" ]
+}
+
+variable "integration_kms_key_id" {
+  description = "kms integration key"
+  type = string
+  default = "arn:aws:kms:us-east-1:697682206292:key/469662f6-dffe-45b6-9aaf-55d8a5ea8419"
+}
+
+variable "efs_retention_policy" {
+  description = "The retention policy for data stored on an EFS volume. Valid values are Retain or Delete."
+  type        = string
+  default     = "Retain"
+}

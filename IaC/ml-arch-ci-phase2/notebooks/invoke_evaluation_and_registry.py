@@ -409,10 +409,6 @@ model_package_response = sm_client.create_model_package(
         "rmse_stars": str(round(winner_metrics.get("rmse_stars", 0), 4)),
         "evaluation_date": winner_meta.get("evaluation_timestamp", ""),
     },
-    Tags=[
-        {"Key": "project", "Value": "hymmrec"},
-        {"Key": "model_type", "Value": WINNER_MODEL},
-    ],
 )
 
 model_package_arn = model_package_response["ModelPackageArn"]
@@ -464,11 +460,12 @@ print("=" * 60)
 # Usar la ruta del modelo ganador extraído
 winner_model_s3 = S3_EVAL_MODELS_TH if WINNER_MODEL == "twoheads" else S3_EVAL_MODELS_REG
 
-packaging_processor = SKLearnProcessor(
+packaging_processor = PyTorchProcessor(
     role=ROLE,
     instance_type=PACKAGING_INSTANCE_TYPE,
     instance_count=1,
-    framework_version="1.2-1",
+    framework_version="2.1",
+    py_version="py310",
     sagemaker_session=SESSION,
     base_job_name="hymmrec-model-packaging",
     tags=[
@@ -541,7 +538,6 @@ full_model_data = f"{S3_PACKAGED_MODELS}full-model/full_model.tar.gz"
 full_model = PyTorchModel(
     model_data=full_model_data,
     role=ROLE,
-    entry_point="inference.py",
     framework_version="2.1",
     py_version="py310",
     sagemaker_session=SESSION,
@@ -569,7 +565,6 @@ user_tower_data = f"{S3_PACKAGED_MODELS}user-tower/user_tower.tar.gz"
 user_tower_model = PyTorchModel(
     model_data=user_tower_data,
     role=ROLE,
-    entry_point="inference.py",
     framework_version="2.1",
     py_version="py310",
     sagemaker_session=SESSION,

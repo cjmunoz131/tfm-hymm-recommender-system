@@ -456,9 +456,11 @@ def package_full_model(model, metadata, work_dir, output_dir):
     with open(os.path.join(pkg_dir, "model_metadata.json"), "w") as f:
         json.dump(metadata, f, indent=2)
 
-    # Guardar scripts
-    write_file(os.path.join(pkg_dir, "inference.py"), INFERENCE_FULL_MODEL)
-    write_file(os.path.join(pkg_dir, "model_architecture.py"), MODEL_ARCHITECTURE_PY)
+    # Guardar scripts en code/ (estructura requerida por SageMaker inference)
+    code_dir = os.path.join(pkg_dir, "code")
+    os.makedirs(code_dir, exist_ok=True)
+    write_file(os.path.join(code_dir, "inference.py"), INFERENCE_FULL_MODEL)
+    write_file(os.path.join(code_dir, "model_architecture.py"), MODEL_ARCHITECTURE_PY)
 
     # Crear tar.gz
     tar_path = os.path.join(output_dir, "full_model.tar.gz")
@@ -486,8 +488,10 @@ def package_user_tower(model, metadata, work_dir, output_dir):
     with open(os.path.join(pkg_dir, "model_metadata.json"), "w") as f:
         json.dump(tower_meta, f, indent=2)
 
-    write_file(os.path.join(pkg_dir, "inference.py"), INFERENCE_USER_TOWER)
-    write_file(os.path.join(pkg_dir, "model_architecture.py"), MODEL_ARCHITECTURE_PY)
+    code_dir = os.path.join(pkg_dir, "code")
+    os.makedirs(code_dir, exist_ok=True)
+    write_file(os.path.join(code_dir, "inference.py"), INFERENCE_USER_TOWER)
+    write_file(os.path.join(code_dir, "model_architecture.py"), MODEL_ARCHITECTURE_PY)
 
     tar_path = os.path.join(output_dir, "user_tower.tar.gz")
     create_tar_gz(pkg_dir, tar_path)
@@ -516,8 +520,10 @@ def package_item_tower(model, metadata, work_dir, output_dir):
     with open(os.path.join(pkg_dir, "model_metadata.json"), "w") as f:
         json.dump(tower_meta, f, indent=2)
 
-    write_file(os.path.join(pkg_dir, "inference.py"), INFERENCE_ITEM_TOWER)
-    write_file(os.path.join(pkg_dir, "model_architecture.py"), MODEL_ARCHITECTURE_PY)
+    code_dir = os.path.join(pkg_dir, "code")
+    os.makedirs(code_dir, exist_ok=True)
+    write_file(os.path.join(code_dir, "inference.py"), INFERENCE_ITEM_TOWER)
+    write_file(os.path.join(code_dir, "model_architecture.py"), MODEL_ARCHITECTURE_PY)
 
     tar_path = os.path.join(output_dir, "item_tower.tar.gz")
     create_tar_gz(pkg_dir, tar_path)
