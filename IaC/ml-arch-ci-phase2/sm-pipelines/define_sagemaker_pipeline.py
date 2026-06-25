@@ -107,9 +107,9 @@ INFERENCE_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/inference"
 DEFAULT_PROCESSING_INSTANCE = "ml.m5.xlarge"
 DEFAULT_EMBEDDINGS_INSTANCE = "ml.t3.medium"
 DEFAULT_SPLITS_INSTANCE = "ml.m5.large"
-DEFAULT_TRAINING_INSTANCE = "ml.g4dn.xlarge"
-DEFAULT_HPO_INSTANCE = "ml.g4dn.xlarge"
-DEFAULT_EVAL_INSTANCE = "ml.g4dn.xlarge"
+DEFAULT_TRAINING_INSTANCE = "ml.m5.2xlarge"#"ml.g4dn.xlarge"
+DEFAULT_HPO_INSTANCE = "ml.m5.2xlarge"#"ml.g4dn.xlarge"
+DEFAULT_EVAL_INSTANCE = "ml.m5.2xlarge"#"ml.g4dn.xlarge"
 DEFAULT_PACKAGING_INSTANCE = "ml.m5.large"
 
 # --- HPO Config ---
@@ -607,22 +607,21 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
 
     step_train_regression = TrainingStep(
         name="TrainingRegression",
-        step_args=regression_estimator.fit(
-            inputs={
-                "train": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
-                    content_type="application/x-parquet",
-                ),
-                "embeddings": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
-                    content_type="application/octet-stream",
-                ),
-                "encoders": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
-                    content_type="application/octet-stream",
-                ),
-            },
-        ),
+        estimator=regression_estimator,
+        inputs={
+            "train": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
+                content_type="application/x-parquet",
+            ),
+            "embeddings": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
+                content_type="application/octet-stream",
+            ),
+            "encoders": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
+                content_type="application/octet-stream",
+            ),
+        },
     )
 
     step_train_regression.add_depends_on([step_hpo_regression])
@@ -681,22 +680,21 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
 
     step_train_twoheads = TrainingStep(
         name="TrainingTwoHeads",
-        step_args=twoheads_estimator.fit(
-            inputs={
-                "train": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
-                    content_type="application/x-parquet",
-                ),
-                "embeddings": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
-                    content_type="application/octet-stream",
-                ),
-                "encoders": sagemaker.inputs.TrainingInput(
-                    s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
-                    content_type="application/octet-stream",
-                ),
-            },
-        ),
+        estimator=twoheads_estimator,
+        inputs={
+            "train": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
+                content_type="application/x-parquet",
+            ),
+            "embeddings": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
+                content_type="application/octet-stream",
+            ),
+            "encoders": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
+                content_type="application/octet-stream",
+            ),
+        },
     )
 
     step_train_twoheads.add_depends_on([step_hpo_twoheads])
