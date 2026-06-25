@@ -124,3 +124,16 @@ variable "sagemaker_scripts_bucket" {
   type        = string
   default     = "hymmrec-sagemaker-assets"
 }
+
+variable "sagemaker_pipeline_name" {
+  description = "name of the sagemaker pipeline"
+  type = string
+  default = "principal-model"
+}
+
+
+variable "silver_bucket_name" {
+  description = "Silver datalake bucket name"
+  type        = string
+  default     = "hymmrec-dilkehousesilver01"
+}

@@ -82,7 +82,8 @@ logger = logging.getLogger(__name__)
 # CONSTANTES Y CONFIGURACIÓN
 # ==============================================================================
 
-PIPELINE_NAME = "hymmrec-mlops-pipeline"
+PIPELINE_NAME = "hymmrec-principal-model-sm-pipeline-default"
+
 PIPELINE_DESCRIPTION = (
     "Pipeline MLOps end-to-end para HYMM-REC. Incluye Feature Engineering, "
     "Embeddings, Data Splits, HPO (Regresión + Two-Heads), Training Final, "

@@ -91,6 +91,33 @@ module "aws-ml-compute-model-dev-domain-sagemaker-layer-module" {
   efs_retention_policy                     = var.efs_retention_policy
 }
 
+######## MLOPS PIPELINES ##############
+module "aws-ml-governance-model-ops-hymmrec-pipelines-sagemaker-layer-module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source          = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-ops-pipelines-sagemaker"
+  project         = var.project
+  enable_sagemaker_pipeline = true
+  pipeline-sm-name = var.sagemaker_pipeline_name
+  source_definition_path = "${path.root}/sm-dag-pipelines"
+  vars_map = {}
+  create_role = true
+  role_name = "${var.project}-${var.sagemaker_pipeline_name}-smp-iar-${terraform.workspace}"
+  custom_policy_path = "${path.root}/extra-policies/sagemaker-pipeline"
+  create_terraform_style = false
+  parameters_custom_policy_map = {
+    region                 = data.aws_region.current.name
+    account_id             = data.aws_caller_identity.current.account_id
+    project                = var.project
+    pipeline_role_name     = "${var.project}-${var.sagemaker_pipeline_name}-smp-iar-${terraform.workspace}"
+    s3_sagemaker_assets_arn = "arn:aws:s3:::${var.sagemaker_scripts_bucket}"
+    s3_datalake_gold_arn   = "arn:aws:s3:::${var.gold_bucket_name}"
+    s3_datalake_silver_arn = "arn:aws:s3:::${var.silver_bucket_name}"
+    kms_arn                = var.storage_kms_key_id
+  }
+}
+
 
 # ==============================================================================
 # SAGEMAKER PIPELINE SCRIPTS — Upload dev/ scripts to S3
