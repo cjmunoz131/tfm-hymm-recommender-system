@@ -107,14 +107,14 @@ module "aws-ml-governance-model-ops-hymmrec-pipelines-sagemaker-layer-module" {
   custom_policy_path = "${path.root}/extra-policies/sagemaker-pipeline"
   create_terraform_style = false
   parameters_custom_policy_map = {
-    region                 = data.aws_region.current.name
-    account_id             = data.aws_caller_identity.current.account_id
-    project                = var.project
-    pipeline_role_name     = "${var.project}-${var.sagemaker_pipeline_name}-smp-iar-${terraform.workspace}"
+    region                  = data.aws_region.current.name
+    account_id              = data.aws_caller_identity.current.account_id
+    project                 = var.project
+    pipeline_role_name      = var.sm_pipeline_execution_role_name
     s3_sagemaker_assets_arn = "arn:aws:s3:::${var.sagemaker_scripts_bucket}"
-    s3_datalake_gold_arn   = "arn:aws:s3:::${var.gold_bucket_name}"
-    s3_datalake_silver_arn = "arn:aws:s3:::${var.silver_bucket_name}"
-    kms_arn                = var.storage_kms_key_id
+    s3_datalake_gold_arn    = "arn:aws:s3:::${var.gold_bucket_name}"
+    s3_datalake_silver_arn  = "arn:aws:s3:::${var.silver_bucket_name}"
+    kms_arn                 = var.storage_kms_key_id
   }
 }
 

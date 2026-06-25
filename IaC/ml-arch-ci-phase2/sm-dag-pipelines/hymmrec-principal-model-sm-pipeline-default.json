@@ -1,0 +1,1296 @@
+{
+  "Version": "2020-12-01",
+  "Metadata": {},
+  "Parameters": [
+    {
+      "Name": "Region",
+      "Type": "String",
+      "DefaultValue": "us-east-1"
+    },
+    {
+      "Name": "RoleArn",
+      "Type": "String",
+      "DefaultValue": ""
+    },
+    {
+      "Name": "SilverBucket",
+      "Type": "String",
+      "DefaultValue": "hymmrec-dilkehousesilver01"
+    },
+    {
+      "Name": "GoldBucket",
+      "Type": "String",
+      "DefaultValue": "hymmrec-dilkehousegold01"
+    },
+    {
+      "Name": "PlatinumBucket",
+      "Type": "String",
+      "DefaultValue": "hymmrec-sagemaker-assets"
+    },
+    {
+      "Name": "ProcessingInstanceType",
+      "Type": "String",
+      "DefaultValue": "ml.m5.xlarge"
+    },
+    {
+      "Name": "TrainingInstanceType",
+      "Type": "String",
+      "DefaultValue": "ml.m5.2xlarge"
+    },
+    {
+      "Name": "EvalInstanceType",
+      "Type": "String",
+      "DefaultValue": "ml.m5.2xlarge"
+    },
+    {
+      "Name": "Epochs",
+      "Type": "Integer",
+      "DefaultValue": 30
+    },
+    {
+      "Name": "BatchSize",
+      "Type": "Integer",
+      "DefaultValue": 256
+    },
+    {
+      "Name": "LearningRate",
+      "Type": "Float",
+      "DefaultValue": 0.001
+    },
+    {
+      "Name": "EmbeddingDim",
+      "Type": "Integer",
+      "DefaultValue": 64
+    },
+    {
+      "Name": "Dropout",
+      "Type": "Float",
+      "DefaultValue": 0.3
+    },
+    {
+      "Name": "HPOMaxJobs",
+      "Type": "Integer",
+      "DefaultValue": 12
+    },
+    {
+      "Name": "HPOMaxParallel",
+      "Type": "Integer",
+      "DefaultValue": 3
+    },
+    {
+      "Name": "MinUserInteractions",
+      "Type": "Integer",
+      "DefaultValue": 5
+    },
+    {
+      "Name": "MinItemInteractions",
+      "Type": "Integer",
+      "DefaultValue": 5
+    },
+    {
+      "Name": "TrainRatio",
+      "Type": "Float",
+      "DefaultValue": 0.8
+    },
+    {
+      "Name": "ValRatio",
+      "Type": "Float",
+      "DefaultValue": 0.1
+    },
+    {
+      "Name": "MaxRMSEThreshold",
+      "Type": "Float",
+      "DefaultValue": 2.0
+    }
+  ],
+  "PipelineExperimentConfig": {
+    "ExperimentName": {
+      "Get": "Execution.PipelineName"
+    },
+    "TrialName": {
+      "Get": "Execution.PipelineExecutionId"
+    }
+  },
+  "Steps": [
+    {
+      "Name": "FeatureEngineering",
+      "Type": "Processing",
+      "Arguments": {
+        "ProcessingResources": {
+          "ClusterConfig": {
+            "InstanceType": "ml.m5.xlarge",
+            "InstanceCount": 1,
+            "VolumeSizeInGB": 30
+          }
+        },
+        "AppSpecification": {
+          "ImageUri": "173754725891.dkr.ecr.us-east-1.amazonaws.com/sagemaker-spark-processing:3.3-cpu",
+          "ContainerArguments": [
+            "--region",
+            "us-east-1",
+            "--feature-group-name",
+            "hymmrec-interactions-sm-fg"
+          ],
+          "ContainerEntrypoint": [
+            "smspark-submit",
+            "/opt/ml/processing/input/code/processing-feature-eng-job.py"
+          ]
+        },
+        "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+        "ProcessingInputs": [
+          {
+            "InputName": "ratings",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-dilkehousesilver01/data/obt_movie_affinity/cleansed_ratings/",
+              "LocalPath": "/opt/ml/processing/input/ratings",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "movies",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-dilkehousesilver01/data/obt_movie_affinity/cleansed_movies/",
+              "LocalPath": "/opt/ml/processing/input/movies",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "code",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/sagemaker-scripts/feng-data-preparing/processing-feature-eng-job.py",
+              "LocalPath": "/opt/ml/processing/input/code",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          }
+        ],
+        "ProcessingOutputConfig": {
+          "Outputs": [
+            {
+              "OutputName": "encoders",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/encoders/",
+                "LocalPath": "/opt/ml/processing/output/encoders",
+                "S3UploadMode": "EndOfJob"
+              }
+            },
+            {
+              "OutputName": "feature_interactions",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/interactions/",
+                "LocalPath": "/opt/ml/processing/output/feature_interactions",
+                "S3UploadMode": "EndOfJob"
+              }
+            }
+          ]
+        },
+        "Environment": {},
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "feature-engineering"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "EmbeddingsGeneration",
+      "Type": "Processing",
+      "Arguments": {
+        "ProcessingResources": {
+          "ClusterConfig": {
+            "InstanceType": "ml.t3.medium",
+            "InstanceCount": 1,
+            "VolumeSizeInGB": 30
+          }
+        },
+        "AppSpecification": {
+          "ImageUri": "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+          "ContainerArguments": [
+            "--region",
+            "us-east-1",
+            "--max-workers",
+            "10"
+          ],
+          "ContainerEntrypoint": [
+            "python3",
+            "/opt/ml/processing/input/code/processing-embeddings-job.py"
+          ]
+        },
+        "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+        "ProcessingInputs": [
+          {
+            "InputName": "movies",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-dilkehousesilver01/data/obt_movie_affinity/cleansed_movies/",
+              "LocalPath": "/opt/ml/processing/input/movies",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "posters",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-dilkehousesilver01/data/imv_movie_affinity/movie_posters/",
+              "LocalPath": "/opt/ml/processing/input/posters",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "code",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/sagemaker-scripts/feng-data-preparing/processing-embeddings-job.py",
+              "LocalPath": "/opt/ml/processing/input/code",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          }
+        ],
+        "ProcessingOutputConfig": {
+          "Outputs": [
+            {
+              "OutputName": "embeddings",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/embeddings/",
+                "LocalPath": "/opt/ml/processing/output/embeddings",
+                "S3UploadMode": "EndOfJob"
+              }
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "embeddings-generation"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "DatasetPreparation",
+      "Type": "Processing",
+      "Arguments": {
+        "ProcessingResources": {
+          "ClusterConfig": {
+            "InstanceType": "ml.m5.large",
+            "InstanceCount": 1,
+            "VolumeSizeInGB": 30
+          }
+        },
+        "AppSpecification": {
+          "ImageUri": "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+          "ContainerArguments": [
+            "--min-user-interactions",
+            "5",
+            "--min-item-interactions",
+            "5",
+            "--train-ratio",
+            "0.80",
+            "--val-ratio",
+            "0.10"
+          ],
+          "ContainerEntrypoint": [
+            "python3",
+            "/opt/ml/processing/input/code/processing-prepare-data-splits.py"
+          ]
+        },
+        "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+        "ProcessingInputs": [
+          {
+            "InputName": "features",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/interactions/",
+              "LocalPath": "/opt/ml/processing/input/features",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "code",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/sagemaker-scripts/feng-data-preparing/processing-prepare-data-splits.py",
+              "LocalPath": "/opt/ml/processing/input/code",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          }
+        ],
+        "ProcessingOutputConfig": {
+          "Outputs": [
+            {
+              "OutputName": "train",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/train/",
+                "LocalPath": "/opt/ml/processing/output/train",
+                "S3UploadMode": "EndOfJob"
+              }
+            },
+            {
+              "OutputName": "val",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/val/",
+                "LocalPath": "/opt/ml/processing/output/val",
+                "S3UploadMode": "EndOfJob"
+              }
+            },
+            {
+              "OutputName": "test",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/test/",
+                "LocalPath": "/opt/ml/processing/output/test",
+                "S3UploadMode": "EndOfJob"
+              }
+            },
+            {
+              "OutputName": "cold_starts",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/cold-starts/",
+                "LocalPath": "/opt/ml/processing/output/cold-starts",
+                "S3UploadMode": "EndOfJob"
+              }
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "dataset-preparation"
+          }
+        ]
+      },
+      "DependsOn": [
+        "FeatureEngineering",
+        "EmbeddingsGeneration"
+      ]
+    },
+    {
+      "Name": "HPORegression",
+      "Type": "Tuning",
+      "Arguments": {
+        "HyperParameterTuningJobConfig": {
+          "Strategy": "Bayesian",
+          "ResourceLimits": {
+            "MaxNumberOfTrainingJobs": 12,
+            "MaxParallelTrainingJobs": 3
+          },
+          "TrainingJobEarlyStoppingType": "Off",
+          "HyperParameterTuningJobObjective": {
+            "Type": "Minimize",
+            "MetricName": "val_rmse_stars"
+          },
+          "ParameterRanges": {
+            "ContinuousParameterRanges": [
+              {
+                "Name": "lr",
+                "MinValue": "0.0001",
+                "MaxValue": "0.01",
+                "ScalingType": "Logarithmic"
+              },
+              {
+                "Name": "dropout",
+                "MinValue": "0.1",
+                "MaxValue": "0.5",
+                "ScalingType": "Auto"
+              },
+              {
+                "Name": "weight_decay",
+                "MinValue": "1e-06",
+                "MaxValue": "0.001",
+                "ScalingType": "Logarithmic"
+              }
+            ],
+            "CategoricalParameterRanges": [
+              {
+                "Name": "batch_size",
+                "Values": [
+                  "\"128\"",
+                  "\"256\"",
+                  "\"512\""
+                ]
+              },
+              {
+                "Name": "emb_dim",
+                "Values": [
+                  "\"32\"",
+                  "\"64\"",
+                  "\"128\""
+                ]
+              }
+            ],
+            "IntegerParameterRanges": []
+          }
+        },
+        "TrainingJobDefinition": {
+          "StaticHyperParameters": {
+            "epochs": "15",
+            "patience": "2",
+            "num_workers": "2",
+            "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/sagemaker-scripts/training\"",
+            "sagemaker_program": "\"hpo_hymmrec_regression.py\"",
+            "sagemaker_container_log_level": "20",
+            "sagemaker_job_name": "\"hymmrec-hpo-regression-2026-06-25-00-28-33-230\"",
+            "sagemaker_region": "\"us-east-1\"",
+            "sagemaker_estimator_class_name": "\"PyTorch\"",
+            "sagemaker_estimator_module": "\"sagemaker.pytorch.estimator\""
+          },
+          "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+          "OutputDataConfig": {
+            "S3OutputPath": "s3://sagemaker-us-east-1-697682206292/"
+          },
+          "StoppingCondition": {
+            "MaxRuntimeInSeconds": 86400
+          },
+          "HyperParameterTuningResourceConfig": {
+            "InstanceCount": 1,
+            "InstanceType": "ml.m5.2xlarge",
+            "VolumeSizeInGB": 30
+          },
+          "AlgorithmSpecification": {
+            "TrainingInputMode": "File",
+            "MetricDefinitions": [
+              {
+                "Name": "val_rmse_stars",
+                "Regex": "val_rmse_stars=(.*?);"
+              },
+              {
+                "Name": "train_mse",
+                "Regex": "train_mse=(.*?);"
+              },
+              {
+                "Name": "val_mse",
+                "Regex": "val_mse=(.*?);"
+              },
+              {
+                "Name": "test_rmse_stars",
+                "Regex": "test_rmse_stars=(.*?);"
+              }
+            ],
+            "TrainingImage": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310"
+          },
+          "InputDataConfig": [
+            {
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/x-parquet",
+              "ChannelName": "train"
+            },
+            {
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/embeddings/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/octet-stream",
+              "ChannelName": "embeddings"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "hpo-regression"
+          }
+        ]
+      },
+      "DependsOn": [
+        "DatasetPreparation"
+      ]
+    },
+    {
+      "Name": "HPOTwoHeads",
+      "Type": "Tuning",
+      "Arguments": {
+        "HyperParameterTuningJobConfig": {
+          "Strategy": "Bayesian",
+          "ResourceLimits": {
+            "MaxNumberOfTrainingJobs": 12,
+            "MaxParallelTrainingJobs": 3
+          },
+          "TrainingJobEarlyStoppingType": "Off",
+          "HyperParameterTuningJobObjective": {
+            "Type": "Minimize",
+            "MetricName": "val_bce"
+          },
+          "ParameterRanges": {
+            "ContinuousParameterRanges": [
+              {
+                "Name": "lr",
+                "MinValue": "0.0001",
+                "MaxValue": "0.005",
+                "ScalingType": "Logarithmic"
+              },
+              {
+                "Name": "dropout",
+                "MinValue": "0.1",
+                "MaxValue": "0.5",
+                "ScalingType": "Auto"
+              },
+              {
+                "Name": "weight_decay",
+                "MinValue": "1e-06",
+                "MaxValue": "0.001",
+                "ScalingType": "Logarithmic"
+              }
+            ],
+            "CategoricalParameterRanges": [
+              {
+                "Name": "batch_size",
+                "Values": [
+                  "\"128\"",
+                  "\"256\"",
+                  "\"512\""
+                ]
+              },
+              {
+                "Name": "emb_dim",
+                "Values": [
+                  "\"64\"",
+                  "\"128\""
+                ]
+              }
+            ],
+            "IntegerParameterRanges": []
+          }
+        },
+        "TrainingJobDefinition": {
+          "StaticHyperParameters": {
+            "epochs": "15",
+            "patience": "3",
+            "num_workers": "2",
+            "neg_ratio": "4",
+            "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/sagemaker-scripts/training\"",
+            "sagemaker_program": "\"hpo_hymmrec_twoheads.py\"",
+            "sagemaker_container_log_level": "20",
+            "sagemaker_job_name": "\"hymmrec-hpo-twoheads-2026-06-25-00-28-33-657\"",
+            "sagemaker_region": "\"us-east-1\"",
+            "sagemaker_estimator_class_name": "\"PyTorch\"",
+            "sagemaker_estimator_module": "\"sagemaker.pytorch.estimator\""
+          },
+          "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+          "OutputDataConfig": {
+            "S3OutputPath": "s3://sagemaker-us-east-1-697682206292/"
+          },
+          "StoppingCondition": {
+            "MaxRuntimeInSeconds": 86400
+          },
+          "HyperParameterTuningResourceConfig": {
+            "InstanceCount": 1,
+            "InstanceType": "ml.m5.2xlarge",
+            "VolumeSizeInGB": 30
+          },
+          "AlgorithmSpecification": {
+            "TrainingInputMode": "File",
+            "MetricDefinitions": [
+              {
+                "Name": "val_bce",
+                "Regex": "val_bce=(.*?);"
+              },
+              {
+                "Name": "train_total_loss",
+                "Regex": "train_total_loss=(.*?);"
+              },
+              {
+                "Name": "val_total_loss",
+                "Regex": "val_total_loss=(.*?);"
+              },
+              {
+                "Name": "val_mse",
+                "Regex": "val_mse=(.*?);"
+              },
+              {
+                "Name": "val_rmse_stars",
+                "Regex": "val_rmse_stars=(.*?);"
+              },
+              {
+                "Name": "test_total_loss",
+                "Regex": "test_total_loss=(.*?);"
+              },
+              {
+                "Name": "test_rmse_stars",
+                "Regex": "test_rmse_stars=(.*?);"
+              }
+            ],
+            "TrainingImage": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310"
+          },
+          "InputDataConfig": [
+            {
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/x-parquet",
+              "ChannelName": "train"
+            },
+            {
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/embeddings/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/octet-stream",
+              "ChannelName": "embeddings"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "hpo-twoheads"
+          }
+        ]
+      },
+      "DependsOn": [
+        "DatasetPreparation"
+      ]
+    },
+    {
+      "Name": "TrainingRegression",
+      "Type": "Training",
+      "Arguments": {
+        "AlgorithmSpecification": {
+          "TrainingInputMode": "File",
+          "TrainingImage": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310",
+          "MetricDefinitions": [
+            {
+              "Name": "train_mse",
+              "Regex": "train_mse=(.*?);"
+            },
+            {
+              "Name": "val_mse",
+              "Regex": "val_mse=(.*?);"
+            },
+            {
+              "Name": "val_rmse_stars",
+              "Regex": "val_rmse_stars=(.*?);"
+            },
+            {
+              "Name": "test_rmse_stars",
+              "Regex": "test_rmse_stars=(.*?);"
+            }
+          ],
+          "EnableSageMakerMetricsTimeSeries": true
+        },
+        "OutputDataConfig": {
+          "S3OutputPath": "s3://hymmrec-sagemaker-assets/hymmrec/models/regression/"
+        },
+        "StoppingCondition": {
+          "MaxRuntimeInSeconds": 86400
+        },
+        "ResourceConfig": {
+          "VolumeSizeInGB": 30,
+          "InstanceCount": 1,
+          "InstanceType": "ml.m5.2xlarge"
+        },
+        "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+        "InputDataConfig": [
+          {
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "application/x-parquet",
+            "ChannelName": "train"
+          },
+          {
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/embeddings/",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "application/octet-stream",
+            "ChannelName": "embeddings"
+          },
+          {
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/encoders/",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "application/octet-stream",
+            "ChannelName": "encoders"
+          }
+        ],
+        "HyperParameters": {
+          "epochs": "30",
+          "patience": "5",
+          "num_workers": "2",
+          "scheduler_patience": "2",
+          "scheduler_factor": "0.5",
+          "min_lr": "1e-06",
+          "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/sagemaker-scripts/training\"",
+          "sagemaker_program": "\"train_hymmrec_regression.py\"",
+          "sagemaker_container_log_level": "20",
+          "sagemaker_region": "\"us-east-1\""
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "training-regression-final"
+          }
+        ],
+        "DebugHookConfig": {
+          "S3OutputPath": "s3://hymmrec-sagemaker-assets/hymmrec/models/regression/",
+          "CollectionConfigurations": []
+        },
+        "ProfilerConfig": {
+          "S3OutputPath": "s3://hymmrec-sagemaker-assets/hymmrec/models/regression/",
+          "DisableProfiler": false
+        }
+      },
+      "DependsOn": [
+        "HPORegression"
+      ]
+    },
+    {
+      "Name": "TrainingTwoHeads",
+      "Type": "Training",
+      "Arguments": {
+        "AlgorithmSpecification": {
+          "TrainingInputMode": "File",
+          "TrainingImage": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310",
+          "MetricDefinitions": [
+            {
+              "Name": "train_total_loss",
+              "Regex": "train_total_loss=(.*?);"
+            },
+            {
+              "Name": "val_total_loss",
+              "Regex": "val_total_loss=(.*?);"
+            },
+            {
+              "Name": "val_bce",
+              "Regex": "val_bce=(.*?);"
+            },
+            {
+              "Name": "val_mse",
+              "Regex": "val_mse=(.*?);"
+            },
+            {
+              "Name": "val_rmse_stars",
+              "Regex": "val_rmse_stars=(.*?);"
+            },
+            {
+              "Name": "test_total_loss",
+              "Regex": "test_total_loss=(.*?);"
+            },
+            {
+              "Name": "test_rmse_stars",
+              "Regex": "test_rmse_stars=(.*?);"
+            }
+          ],
+          "EnableSageMakerMetricsTimeSeries": true
+        },
+        "OutputDataConfig": {
+          "S3OutputPath": "s3://hymmrec-sagemaker-assets/hymmrec/models/twoheads/"
+        },
+        "StoppingCondition": {
+          "MaxRuntimeInSeconds": 86400
+        },
+        "ResourceConfig": {
+          "VolumeSizeInGB": 30,
+          "InstanceCount": 1,
+          "InstanceType": "ml.m5.2xlarge"
+        },
+        "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+        "InputDataConfig": [
+          {
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "application/x-parquet",
+            "ChannelName": "train"
+          },
+          {
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/embeddings/",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "application/octet-stream",
+            "ChannelName": "embeddings"
+          },
+          {
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/encoders/",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "application/octet-stream",
+            "ChannelName": "encoders"
+          }
+        ],
+        "HyperParameters": {
+          "epochs": "30",
+          "patience": "5",
+          "neg_ratio": "4",
+          "num_workers": "2",
+          "scheduler_patience": "2",
+          "scheduler_factor": "0.5",
+          "min_lr": "1e-06",
+          "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/sagemaker-scripts/training\"",
+          "sagemaker_program": "\"train_hymmrec_twoheads.py\"",
+          "sagemaker_container_log_level": "20",
+          "sagemaker_region": "\"us-east-1\""
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "training-twoheads-final"
+          }
+        ],
+        "DebugHookConfig": {
+          "S3OutputPath": "s3://hymmrec-sagemaker-assets/hymmrec/models/twoheads/",
+          "CollectionConfigurations": []
+        },
+        "ProfilerConfig": {
+          "S3OutputPath": "s3://hymmrec-sagemaker-assets/hymmrec/models/twoheads/",
+          "DisableProfiler": false
+        }
+      },
+      "DependsOn": [
+        "HPOTwoHeads"
+      ]
+    },
+    {
+      "Name": "ModelEvaluation",
+      "Type": "Processing",
+      "Arguments": {
+        "ProcessingResources": {
+          "ClusterConfig": {
+            "InstanceType": "ml.m5.2xlarge",
+            "InstanceCount": 1,
+            "VolumeSizeInGB": 30
+          }
+        },
+        "AppSpecification": {
+          "ImageUri": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310",
+          "ContainerArguments": [
+            "--k",
+            "10",
+            "--num-decoys",
+            "99"
+          ],
+          "ContainerEntrypoint": [
+            "/bin/bash",
+            "/opt/ml/processing/input/entrypoint/evaluation-job.py"
+          ]
+        },
+        "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+        "ProcessingInputs": [
+          {
+            "InputName": "model_regression",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": {
+                "Get": "Steps.TrainingRegression.ModelArtifacts.S3ModelArtifacts"
+              },
+              "LocalPath": "/opt/ml/processing/input/models/regression",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "model_twoheads",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": {
+                "Get": "Steps.TrainingTwoHeads.ModelArtifacts.S3ModelArtifacts"
+              },
+              "LocalPath": "/opt/ml/processing/input/models/twoheads",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "datasets",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/datasets/",
+              "LocalPath": "/opt/ml/processing/input/datasets",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "embeddings",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/embeddings/",
+              "LocalPath": "/opt/ml/processing/input/embeddings",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "encoders",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/encoders/",
+              "LocalPath": "/opt/ml/processing/input/encoders",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          },
+          {
+            "InputName": "entrypoint",
+            "AppManaged": false,
+            "S3Input": {
+              "S3Uri": "s3://hymmrec-sagemaker-assets/sagemaker-scripts/evaluation/evaluation-job.py",
+              "LocalPath": "/opt/ml/processing/input/entrypoint",
+              "S3DataType": "S3Prefix",
+              "S3InputMode": "File",
+              "S3DataDistributionType": "FullyReplicated",
+              "S3CompressionType": "None"
+            }
+          }
+        ],
+        "ProcessingOutputConfig": {
+          "Outputs": [
+            {
+              "OutputName": "reports",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/evaluation/reports/",
+                "LocalPath": "/opt/ml/processing/output/reports",
+                "S3UploadMode": "EndOfJob"
+              }
+            },
+            {
+              "OutputName": "winner",
+              "AppManaged": false,
+              "S3Output": {
+                "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/evaluation/winner/",
+                "LocalPath": "/opt/ml/processing/output/winner",
+                "S3UploadMode": "EndOfJob"
+              }
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "hymmrec"
+          },
+          {
+            "Key": "phase",
+            "Value": "evaluation"
+          }
+        ]
+      },
+      "PropertyFiles": [
+        {
+          "PropertyFileName": "EvaluationReport",
+          "OutputName": "reports",
+          "FilePath": "evaluation_report.json"
+        }
+      ]
+    },
+    {
+      "Name": "QualityGateCheck",
+      "Type": "Condition",
+      "Arguments": {
+        "Conditions": [
+          {
+            "Type": "LessThanOrEqualTo",
+            "LeftValue": {
+              "Std:JsonGet": {
+                "PropertyFile": {
+                  "Get": "Steps.ModelEvaluation.PropertyFiles.EvaluationReport"
+                },
+                "Path": "winner_rmse_stars"
+              }
+            },
+            "RightValue": {
+              "Get": "Parameters.MaxRMSEThreshold"
+            }
+          }
+        ],
+        "IfSteps": [
+          {
+            "Name": "RegisterModelTwoHeads-RegisterModel",
+            "Type": "RegisterModel",
+            "Arguments": {
+              "ModelPackageGroupName": "hymmrec-multimodal-recommender",
+              "ModelPackageDescription": "HYMM-REC Two-Heads: Recomendador híbrido multimodal. Two-Tower con atención multimodal explicable. BCE(ranking) + MSE(calidad enmascarado).",
+              "InferenceSpecification": {
+                "Containers": [
+                  {
+                    "Image": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-inference:2.1-cpu-py310",
+                    "ModelDataUrl": {
+                      "Get": "Steps.TrainingTwoHeads.ModelArtifacts.S3ModelArtifacts"
+                    }
+                  }
+                ],
+                "SupportedContentTypes": [
+                  "application/json"
+                ],
+                "SupportedResponseMIMETypes": [
+                  "application/json"
+                ],
+                "SupportedRealtimeInferenceInstanceTypes": [
+                  "ml.m5.large",
+                  "ml.c5.large",
+                  "ml.m5.xlarge"
+                ],
+                "SupportedTransformInstanceTypes": [
+                  "ml.m5.large",
+                  "ml.m5.xlarge"
+                ]
+              },
+              "ModelApprovalStatus": "PendingManualApproval",
+              "SkipModelValidation": "None"
+            },
+            "Description": "HYMM-REC Two-Heads: Recomendador híbrido multimodal. Two-Tower con atención multimodal explicable. BCE(ranking) + MSE(calidad enmascarado)."
+          },
+          {
+            "Name": "RegisterModelRegression-RegisterModel",
+            "Type": "RegisterModel",
+            "Arguments": {
+              "ModelPackageGroupName": "hymmrec-multimodal-recommender",
+              "ModelPackageDescription": "HYMM-REC Regression: Predicción de rating puro. Single-Head MSELoss sobre rating escalado [0,1].",
+              "InferenceSpecification": {
+                "Containers": [
+                  {
+                    "Image": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-inference:2.1-cpu-py310",
+                    "ModelDataUrl": {
+                      "Get": "Steps.TrainingRegression.ModelArtifacts.S3ModelArtifacts"
+                    }
+                  }
+                ],
+                "SupportedContentTypes": [
+                  "application/json"
+                ],
+                "SupportedResponseMIMETypes": [
+                  "application/json"
+                ],
+                "SupportedRealtimeInferenceInstanceTypes": [
+                  "ml.m5.large",
+                  "ml.c5.large",
+                  "ml.m5.xlarge"
+                ],
+                "SupportedTransformInstanceTypes": [
+                  "ml.m5.large",
+                  "ml.m5.xlarge"
+                ]
+              },
+              "ModelApprovalStatus": "PendingManualApproval",
+              "SkipModelValidation": "None"
+            },
+            "Description": "HYMM-REC Regression: Predicción de rating puro. Single-Head MSELoss sobre rating escalado [0,1]."
+          },
+          {
+            "Name": "ModelPackaging",
+            "Type": "Processing",
+            "Arguments": {
+              "ProcessingResources": {
+                "ClusterConfig": {
+                  "InstanceType": "ml.m5.large",
+                  "InstanceCount": 1,
+                  "VolumeSizeInGB": 30
+                }
+              },
+              "AppSpecification": {
+                "ImageUri": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310",
+                "ContainerEntrypoint": [
+                  "/bin/bash",
+                  "/opt/ml/processing/input/entrypoint/model-packaging-job.py"
+                ]
+              },
+              "RoleArn": "arn:aws:iam::697682206292:role/sgmkr-notebook-tfm-hymm-rec-ml-iar-dev",
+              "ProcessingInputs": [
+                {
+                  "InputName": "winner",
+                  "AppManaged": false,
+                  "S3Input": {
+                    "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/evaluation/winner/",
+                    "LocalPath": "/opt/ml/processing/input/winner",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                  }
+                },
+                {
+                  "InputName": "model",
+                  "AppManaged": false,
+                  "S3Input": {
+                    "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/models/twoheads/",
+                    "LocalPath": "/opt/ml/processing/input/model",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                  }
+                },
+                {
+                  "InputName": "entrypoint",
+                  "AppManaged": false,
+                  "S3Input": {
+                    "S3Uri": "s3://hymmrec-sagemaker-assets/sagemaker-scripts/evaluation/model-packaging-job.py",
+                    "LocalPath": "/opt/ml/processing/input/entrypoint",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                  }
+                }
+              ],
+              "ProcessingOutputConfig": {
+                "Outputs": [
+                  {
+                    "OutputName": "full_model",
+                    "AppManaged": false,
+                    "S3Output": {
+                      "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/packaged-models/full-model/",
+                      "LocalPath": "/opt/ml/processing/output/full-model",
+                      "S3UploadMode": "EndOfJob"
+                    }
+                  },
+                  {
+                    "OutputName": "user_tower",
+                    "AppManaged": false,
+                    "S3Output": {
+                      "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/packaged-models/user-tower/",
+                      "LocalPath": "/opt/ml/processing/output/user-tower",
+                      "S3UploadMode": "EndOfJob"
+                    }
+                  },
+                  {
+                    "OutputName": "item_tower",
+                    "AppManaged": false,
+                    "S3Output": {
+                      "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/packaged-models/item-tower/",
+                      "LocalPath": "/opt/ml/processing/output/item-tower",
+                      "S3UploadMode": "EndOfJob"
+                    }
+                  }
+                ]
+              },
+              "Tags": [
+                {
+                  "Key": "project",
+                  "Value": "hymmrec"
+                },
+                {
+                  "Key": "phase",
+                  "Value": "model-packaging"
+                }
+              ]
+            },
+            "DependsOn": [
+              "RegisterModelTwoHeads-RegisterModel"
+            ]
+          }
+        ],
+        "ElseSteps": [
+          {
+            "Name": "QualityGateFailed",
+            "Type": "Fail",
+            "Arguments": {
+              "ErrorMessage": "El modelo ganador NO supera el umbral de calidad. RMSE en estrellas supera el máximo permitido. Revisa hiperparámetros, datos, o ajusta el threshold."
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

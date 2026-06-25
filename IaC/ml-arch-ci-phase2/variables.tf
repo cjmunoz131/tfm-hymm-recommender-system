@@ -137,3 +137,8 @@ variable "silver_bucket_name" {
   type        = string
   default     = "hymmrec-dilkehousesilver01"
 }
+
+variable "sm_pipeline_execution_role_name" {
+  type = string
+  default = "sgmkr-notebook-tfm-hymm-rec-ml-iar-dev"
+}
