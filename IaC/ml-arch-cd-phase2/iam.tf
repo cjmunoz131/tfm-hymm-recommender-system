@@ -1,12 +1,3 @@
-
-data "aws_caller_identity" "current" {
-  provider = aws.account1
-}
-
-data "aws_region" "current" {
-  provider = aws.account1
-}
-
 # ==============================================================================
 # IAM ROLE — Endpoint Execution Role
 # ==============================================================================

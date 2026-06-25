@@ -103,3 +103,9 @@ variable "user_tower_model_sagemaker_name" {
   type = string
   default = "user-tower"
 }
+
+variable "pytorch_inference_image" {
+  description = "PyTorch inference container image URI (us-east-1, CPU, py310)"
+  type        = string
+  default     = "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-inference:2.1.0-cpu-py310-ubuntu20.04-sagemaker"
+}

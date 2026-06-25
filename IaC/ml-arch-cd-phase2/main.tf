@@ -37,7 +37,8 @@ module "aws_ml_compute_model_serving_hymmrec_full_model_layer_model" {
 
   sagemaker_model_primary_container = [
     {
-      model_package_name = "arn:aws:sagemaker:us-east-1:${data.aws_caller_identity.current.account_id}:model-package/${var.full_model_package_arn}"
+      image          = var.pytorch_inference_image
+      model_data_url = "s3://${var.sagemaker_assets_bucket}/hymmrec/packaged-models/full-model/full_model.tar.gz"
     }
   ]
 
@@ -49,37 +50,37 @@ module "aws_ml_compute_model_serving_hymmrec_full_model_layer_model" {
 # FULL MODEL — Endpoint
 # ==============================================================================
 
-module "aws_sagemaker_gov_model_serving_full_model_endpoint_layer_module" {
-  providers = {
-    aws.main = aws.account1
-  }
-  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-endpoint-sagemaker"
+# module "aws_sagemaker_gov_model_serving_full_model_endpoint_layer_module" {
+#   providers = {
+#     aws.main = aws.account1
+#   }
+#   source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-endpoint-sagemaker"
 
-  enable_sagemaker_endpoint = true
-  project                   = var.project
-  endpoint-name             = var.full_endpoint_name
+#   enable_sagemaker_endpoint = true
+#   project                   = var.project
+#   endpoint-name             = var.full_endpoint_name
 
-  enable_sagemaker_endpoint_configuration = true
-  endpoint_configuration_name             = var.full_endpoint_config_name
-  sagemaker_endpoint_configuration_kms_key_arn = var.storage_kms_key_id
-  sagemaker_endpoint_configuration_production_variants = [
-    {
-      variant_name           = "AllTraffic"
-      model_name             = module.aws_ml_compute_model_serving_hymmrec_full_model_layer_model.sagemaker_model_id
-      initial_instance_count = 1
-      instance_type          = var.endpoint_instance_type
-    }
-  ]
+#   enable_sagemaker_endpoint_configuration = true
+#   endpoint_configuration_name             = var.full_endpoint_config_name
+#   sagemaker_endpoint_configuration_kms_key_arn = var.storage_kms_key_id
+#   sagemaker_endpoint_configuration_production_variants = [
+#     {
+#       variant_name           = "AllTraffic"
+#       model_name             = module.aws_ml_compute_model_serving_hymmrec_full_model_layer_model.sagemaker_model_id
+#       initial_instance_count = 1
+#       instance_type          = var.endpoint_instance_type
+#     }
+#   ]
 
-  # Autoscaling
-  enable_sagemaker_default_autoscaling = true
-  endpoint_instance_min_capacity       = 1
-  endpoint_instance_max_capacity       = 2
-  scale_in_cooldown                    = 300
-  scale_out_cooldown                   = 60
-  sagemaker_variant_name               = "AllTraffic"
-  invocations_target_value             = 100
-}
+#   # Autoscaling
+#   enable_sagemaker_default_autoscaling = true
+#   endpoint_instance_min_capacity       = 1
+#   endpoint_instance_max_capacity       = 2
+#   scale_in_cooldown                    = 300
+#   scale_out_cooldown                   = 60
+#   sagemaker_variant_name               = "AllTraffic"
+#   invocations_target_value             = 100
+# }
 
 
 # ==============================================================================
@@ -100,7 +101,8 @@ module "aws_ml_compute_model_serving_hymmrec_user_tower_model_layer_model" {
 
   sagemaker_model_primary_container = [
     {
-      model_package_name = "arn:aws:sagemaker:us-east-1:${data.aws_caller_identity.current.account_id}:model-package/${var.user_tower_model_package_arn}"
+      image          = var.pytorch_inference_image
+      model_data_url = "s3://${var.sagemaker_assets_bucket}/hymmrec/packaged-models/user-tower/user_tower.tar.gz"
     }
   ]
 
@@ -112,34 +114,34 @@ module "aws_ml_compute_model_serving_hymmrec_user_tower_model_layer_model" {
 # USER TOWER — Endpoint
 # ==============================================================================
 
-module "aws_sagemaker_gov_model_serving_user_tower_endpoint_layer_module" {
-  providers = {
-    aws.main = aws.account1
-  }
-  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-endpoint-sagemaker"
+# module "aws_sagemaker_gov_model_serving_user_tower_endpoint_layer_module" {
+#   providers = {
+#     aws.main = aws.account1
+#   }
+#   source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-endpoint-sagemaker"
 
-  enable_sagemaker_endpoint = true
-  project                   = var.project
-  endpoint-name             = var.user_tower_endpoint_name
+#   enable_sagemaker_endpoint = true
+#   project                   = var.project
+#   endpoint-name             = var.user_tower_endpoint_name
 
-  enable_sagemaker_endpoint_configuration = true
-  endpoint_configuration_name             = var.user_tower_endpoint_config_name
-  sagemaker_endpoint_configuration_kms_key_arn = var.storage_kms_key_id
-  sagemaker_endpoint_configuration_production_variants = [
-    {
-      variant_name           = "AllTraffic"
-      model_name             = module.aws_ml_compute_model_serving_hymmrec_user_tower_model_layer_model.sagemaker_model_id
-      initial_instance_count = 1
-      instance_type          = var.endpoint_instance_type
-    }
-  ]
+#   enable_sagemaker_endpoint_configuration = true
+#   endpoint_configuration_name             = var.user_tower_endpoint_config_name
+#   sagemaker_endpoint_configuration_kms_key_arn = var.storage_kms_key_id
+#   sagemaker_endpoint_configuration_production_variants = [
+#     {
+#       variant_name           = "AllTraffic"
+#       model_name             = module.aws_ml_compute_model_serving_hymmrec_user_tower_model_layer_model.sagemaker_model_id
+#       initial_instance_count = 1
+#       instance_type          = var.endpoint_instance_type
+#     }
+#   ]
 
-  # Autoscaling
-  enable_sagemaker_default_autoscaling = true
-  endpoint_instance_min_capacity       = 1
-  endpoint_instance_max_capacity       = 2
-  scale_in_cooldown                    = 300
-  scale_out_cooldown                   = 60
-  sagemaker_variant_name               = "AllTraffic"
-  invocations_target_value             = 100
-}
+#   # Autoscaling
+#   enable_sagemaker_default_autoscaling = true
+#   endpoint_instance_min_capacity       = 1
+#   endpoint_instance_max_capacity       = 2
+#   scale_in_cooldown                    = 300
+#   scale_out_cooldown                   = 60
+#   sagemaker_variant_name               = "AllTraffic"
+#   invocations_target_value             = 100
+# }
