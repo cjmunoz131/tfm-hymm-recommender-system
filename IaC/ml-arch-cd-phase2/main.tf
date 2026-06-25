@@ -37,8 +37,7 @@ module "aws_ml_compute_model_serving_hymmrec_full_model_layer_model" {
 
   sagemaker_model_primary_container = [
     {
-      image          = var.pytorch_inference_image
-      model_data_url = "s3://${var.sagemaker_assets_bucket}/hymmrec/packaged-models/full-model/full_model.tar.gz"
+      model_package_name = "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:model-package/${var.full_model_package_arn}"
     }
   ]
 
@@ -101,8 +100,7 @@ module "aws_ml_compute_model_serving_hymmrec_user_tower_model_layer_model" {
 
   sagemaker_model_primary_container = [
     {
-      image          = var.pytorch_inference_image
-      model_data_url = "s3://${var.sagemaker_assets_bucket}/hymmrec/packaged-models/user-tower/user_tower.tar.gz"
+      model_package_name = "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:model-package/${var.user_tower_model_package_arn}"
     }
   ]
 

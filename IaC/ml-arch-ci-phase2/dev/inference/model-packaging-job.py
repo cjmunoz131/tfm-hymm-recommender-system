@@ -531,6 +531,107 @@ def package_item_tower(model, metadata, work_dir, output_dir):
 
 
 # ============================================================
+# REGISTRO EN MODEL PACKAGE GROUPS (Versionado para CD)
+# ============================================================
+
+PYTORCH_INFERENCE_IMAGE = "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-inference:2.1.0-cpu-py310-ubuntu20.04-sagemaker"
+SAGEMAKER_ASSETS_BUCKET = "hymmrec-sagemaker-assets"
+
+# Mapeo: componente → package group name
+PACKAGE_GROUPS = {
+    "full-model": "hymmrec-full-model-sm-pg",
+    "user-tower": "hymmrec-user-tower-sm-pg",
+    "item-tower": "hymmrec-item-tower-sm-pg",
+}
+
+# Mapeo: componente → S3 path del tar.gz (output del processing job)
+PACKAGED_PATHS = {
+    "full-model": f"s3://{SAGEMAKER_ASSETS_BUCKET}/hymmrec/packaged-models/full-model/full_model.tar.gz",
+    "user-tower": f"s3://{SAGEMAKER_ASSETS_BUCKET}/hymmrec/packaged-models/user-tower/user_tower.tar.gz",
+    "item-tower": f"s3://{SAGEMAKER_ASSETS_BUCKET}/hymmrec/packaged-models/item-tower/item_tower.tar.gz",
+}
+
+
+def register_packaged_models_in_registry(metadata):
+    """
+    Registra cada artefacto empaquetado en su Model Package Group correspondiente.
+    Cada llamada a create_model_package genera una nueva versión automáticamente
+    (/1, /2, /3...) dentro del grupo.
+
+    Esto permite que Terraform en el CD referencie:
+      model_package_name = "arn:aws:sagemaker:REGION:ACCOUNT:model-package/hymmrec-full-model-sm-pg/2"
+    y obtenga el artefacto correcto con su inference.py incluido.
+    """
+    import boto3
+
+    sm_client = boto3.client("sagemaker", region_name="us-east-1")
+
+    descriptions = {
+        "full-model": (
+            f"HYMM-REC Full Model ({metadata.get('mode', 'unknown')}). "
+            f"Predicción completa: interaction + rating + atención explicable."
+        ),
+        "user-tower": (
+            f"HYMM-REC User Tower (emb_dim={metadata.get('emb_dim', 64)}). "
+            f"Genera embedding de usuario 64D para búsqueda ANN en OpenSearch."
+        ),
+        "item-tower": (
+            f"HYMM-REC Item Tower (emb_dim={metadata.get('emb_dim', 64)}). "
+            f"Genera embedding de item 64D para indexación offline."
+        ),
+    }
+
+    instance_types_realtime = {
+        "full-model": ["ml.m5.large", "ml.c5.large", "ml.m5.xlarge"],
+        "user-tower": ["ml.m5.large", "ml.c5.large"],
+        "item-tower": ["ml.m5.large"],
+    }
+
+    instance_types_transform = {
+        "full-model": ["ml.m5.large", "ml.m5.xlarge"],
+        "user-tower": ["ml.m5.large"],
+        "item-tower": ["ml.m5.large", "ml.m5.xlarge"],
+    }
+
+    for component, pg_name in PACKAGE_GROUPS.items():
+        model_data_url = PACKAGED_PATHS[component]
+        logger.info(f"  Registrando {component} en {pg_name}...")
+        logger.info(f"    ModelDataUrl: {model_data_url}")
+
+        try:
+            response = sm_client.create_model_package(
+                ModelPackageGroupName=pg_name,
+                ModelPackageDescription=descriptions[component],
+                InferenceSpecification={
+                    "Containers": [
+                        {
+                            "Image": PYTORCH_INFERENCE_IMAGE,
+                            "ModelDataUrl": model_data_url,
+                            "Framework": "PYTORCH",
+                        }
+                    ],
+                    "SupportedContentTypes": ["application/json"],
+                    "SupportedResponseMIMETypes": ["application/json"],
+                    "SupportedRealtimeInferenceInstanceTypes": instance_types_realtime[component],
+                    "SupportedTransformInstanceTypes": instance_types_transform[component],
+                },
+                ModelApprovalStatus="PendingManualApproval",
+                CustomerMetadataProperties={
+                    "component": component,
+                    "mode": metadata.get("mode", "unknown"),
+                    "emb_dim": str(metadata.get("emb_dim", 64)),
+                    "num_users": str(metadata.get("num_users", 0)),
+                    "num_items": str(metadata.get("num_items", 0)),
+                },
+            )
+            model_pkg_arn = response["ModelPackageArn"]
+            logger.info(f"    Registrado: {model_pkg_arn}")
+        except Exception as e:
+            logger.error(f"    Error registrando {component}: {e}")
+            logger.error(f"    Continuando con el siguiente componente...")
+
+
+# ============================================================
 # MAIN
 # ============================================================
 def main():
@@ -595,7 +696,11 @@ def main():
     package_user_tower(model, metadata, work_dir, output_user)
     package_item_tower(model, metadata, work_dir, output_item)
 
-    # 4. Resumen
+    # 4. Registrar artefactos en Model Package Groups (versionado)
+    logger.info("\n[PASO 4] Registrando artefactos en Model Package Groups...")
+    register_packaged_models_in_registry(metadata)
+
+    # 5. Resumen
     elapsed = time.time() - inicio
     logger.info(f"\nPackaging completado en {elapsed:.1f}s")
     logger.info(f"  - Full Model: {output_full}/full_model.tar.gz")

@@ -63,15 +63,15 @@ variable "endpoint_instance_type" {
 #       --model-approval-status Approved --query 'ModelPackageSummaryList[0].ModelPackageArn'
 
 variable "full_model_package_arn" {
-  description = "ARN del Model Package aprobado para Full Model (Two-Heads)"
+  description = "Model Package name/version para Full Model (ej: hymmrec-full-model-sm-pg/1)"
   type        = string
-  default     = "hymmrec-model-sm-pg/1"
+  default     = "hymmrec-full-model-sm-pg/1"
 }
 
 variable "user_tower_model_package_arn" {
-  description = "ARN del Model Package aprobado para User Tower"
+  description = "Model Package name/version para User Tower (ej: hymmrec-user-tower-sm-pg/1)"
   type        = string
-  default     = "hymmrec-model-sm-pg/1"
+  default     = "hymmrec-user-tower-sm-pg/1"
 }
 
 variable "full_endpoint_name" {
@@ -102,10 +102,4 @@ variable "user_tower_endpoint_config_name" {
 variable "user_tower_model_sagemaker_name" {
   type = string
   default = "user-tower"
-}
-
-variable "pytorch_inference_image" {
-  description = "PyTorch inference container image URI (us-east-1, CPU, py310)"
-  type        = string
-  default     = "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-inference:2.1.0-cpu-py310-ubuntu20.04-sagemaker"
 }

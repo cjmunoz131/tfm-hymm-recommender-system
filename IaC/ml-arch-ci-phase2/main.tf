@@ -70,6 +70,46 @@ module "aws_ml_gov_model_serving_hymmrec_package_group_layer_module" {
   package_group_name             = var.package_group_name
 }
 
+# ==============================================================================
+# MODEL PACKAGE GROUPS — Artefactos Empaquetados (Deployment-Ready)
+# ==============================================================================
+# Estos Package Groups almacenan versiones de cada componente desplegable
+# con inference.py incluido. El packaging step del pipeline registra aquí
+# cada versión tras empaquetar las torres y el modelo completo.
+
+module "aws_ml_gov_model_serving_hymmrec_full_model_pg_layer_module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-packagegroup-sagemaker"
+
+  enable_sagemaker_package_group = true
+  project                        = var.project
+  package_group_name             = "full-model"
+}
+
+module "aws_ml_gov_model_serving_hymmrec_user_tower_pg_layer_module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-packagegroup-sagemaker"
+
+  enable_sagemaker_package_group = true
+  project                        = var.project
+  package_group_name             = "user-tower"
+}
+
+module "aws_ml_gov_model_serving_hymmrec_item_tower_pg_layer_module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-governance-model-serving-packagegroup-sagemaker"
+
+  enable_sagemaker_package_group = true
+  project                        = var.project
+  package_group_name             = "item-tower"
+}
+
 
 ######## SAGEAMAKER DOMAIN STUDIO ###########
 module "aws-ml-compute-model-dev-domain-sagemaker-layer-module" {

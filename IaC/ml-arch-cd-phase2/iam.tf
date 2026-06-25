@@ -82,6 +82,19 @@ resource "aws_iam_role_policy" "sagemaker_endpoint_policy" {
         Effect = "Allow"
         Action = ["cloudwatch:PutMetricData"]
         Resource = "*"
+      },
+      {
+        Sid    = "SageMakerModelPackageAccess"
+        Effect = "Allow"
+        Action = [
+          "sagemaker:DescribeModelPackage",
+          "sagemaker:DescribeModelPackageGroup",
+          "sagemaker:ListModelPackages"
+        ]
+        Resource = [
+          "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:model-package/${var.project}-*",
+          "arn:aws:sagemaker:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:model-package-group/${var.project}-*"
+        ]
       }
     ]
   })
