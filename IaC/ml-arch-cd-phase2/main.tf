@@ -145,3 +145,35 @@ module "aws_ml_compute_model_serving_hymmrec_user_tower_model_layer_model" {
 #   sagemaker_variant_name               = "AllTraffic"
 #   invocations_target_value             = 100
 # }
+
+
+# ==============================================================================
+# ITEM TOWER — SageMaker Model (para Batch Transform en Inference Pipeline)
+# ==============================================================================
+# Este modelo es consumido por el Batch Transform del proyecto hymm-inf-exp-arch
+# para generar item embeddings 64D + attention_weights.
+# Input: JSONL con {item_idx, genres_multihot[20D], text_emb[1024D], img_emb[1024D]}
+# Output: {item_embedding[64D], attention_weights: {category, text, image}}
+
+module "aws_ml_compute_model_serving_hymmrec_item_tower_model_layer_model" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-ml-compute-model-serving-deployment-sagemaker"
+
+  enable_sagemaker_model              = true
+  project                             = var.project
+  sagemaker_model_name                = var.item_tower_model_sagemaker_name
+  sagemaker_model_execution_role_arn  = aws_iam_role.sagemaker_endpoint_role.arn
+  sagemaker_model_enable_network_isolation = false
+
+  sagemaker_model_primary_container = [
+    {
+      image          = var.pytorch_inference_image
+      model_data_url = "s3://${var.sagemaker_assets_bucket}/hymmrec/packaged-models/item-tower/item_tower.tar.gz"
+    }
+  ]
+
+  sagemaker_model_container  = []
+  sagemaker_model_vpc_config = []
+}

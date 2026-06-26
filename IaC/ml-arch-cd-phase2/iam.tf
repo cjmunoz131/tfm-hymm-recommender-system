@@ -38,11 +38,15 @@ resource "aws_iam_role_policy" "sagemaker_endpoint_policy" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:ListBucket"
+          "s3:PutObject",
+          "s3:ListBucket",
+          "s3:DeleteObject"
         ]
         Resource = [
           "arn:aws:s3:::${var.sagemaker_assets_bucket}",
-          "arn:aws:s3:::${var.sagemaker_assets_bucket}/*"
+          "arn:aws:s3:::${var.sagemaker_assets_bucket}/*",
+          "arn:aws:s3:::${var.gold_bucket}",
+          "arn:aws:s3:::${var.gold_bucket}/*"
         ]
       },
       {
@@ -50,8 +54,10 @@ resource "aws_iam_role_policy" "sagemaker_endpoint_policy" {
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
+          "kms:Encrypt",
           "kms:DescribeKey",
-          "kms:GenerateDataKey*"
+          "kms:GenerateDataKey*",
+          "kms:CreateGrant"
         ]
         Resource = [var.storage_kms_key_id]
       },
@@ -75,7 +81,10 @@ resource "aws_iam_role_policy" "sagemaker_endpoint_policy" {
           "logs:PutLogEvents",
           "logs:DescribeLogStreams"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/Endpoints/*"
+        Resource = [
+          "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/Endpoints/*",
+          "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/sagemaker/TransformJobs/*"
+        ]
       },
       {
         Sid    = "CloudWatchMetrics"

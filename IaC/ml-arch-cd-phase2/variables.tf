@@ -47,6 +47,12 @@ variable "sagemaker_assets_bucket" {
   default     = "hymmrec-sagemaker-assets"
 }
 
+variable "gold_bucket" {
+  description = "S3 bucket Gold zone (inference I/O for Batch Transform)"
+  type        = string
+  default     = "hymmrec-dilkehousegold01"
+}
+
 variable "endpoint_instance_type" {
   description = "Instance type for SageMaker endpoints"
   type        = string
@@ -102,6 +108,18 @@ variable "user_tower_endpoint_config_name" {
 variable "user_tower_model_sagemaker_name" {
   type = string
   default = "user-tower"
+}
+
+variable "item_tower_model_sagemaker_name" {
+  description = "SageMaker model name for Item Tower (used by Batch Transform in inference pipeline)"
+  type        = string
+  default     = "item-tower"
+}
+
+variable "item_tower_model_package_arn" {
+  description = "ARN del Model Package aprobado para Item Tower"
+  type        = string
+  default     = "hymmrec-model-sm-pg/1"
 }
 
 variable "pytorch_inference_image" {
