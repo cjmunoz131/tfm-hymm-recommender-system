@@ -178,3 +178,50 @@ resource "aws_iam_role_policy" "sagemaker_bedrock_invoke" {
     ]
   })
 }
+
+# ---------------------------------------------------------------
+# SAGEMAKER ROLE — Acceso a Amazon OpenSearch Serverless (AOSS)
+# ---------------------------------------------------------------
+# Permite al notebook SageMaker interactuar con la collection AOSS
+# para pruebas de indexación y queries kNN de vectores.
+# NOTA: El acceso a datos (índices) se controla adicionalmente vía
+# la data access policy de AOSS (configurada en ml-inference-vectorsearch-aoss).
+
+resource "aws_iam_role_policy" "sagemaker_aoss_access" {
+  provider = aws.account1
+  name     = "${var.project}-sagemaker-aoss-access"
+  role     = element(split("/", module.sagemaker-notebook-instance.sagemaker_instance_role_arn), length(split("/", module.sagemaker-notebook-instance.sagemaker_instance_role_arn)) - 1)
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAOSSAPIAccess"
+        Effect = "Allow"
+        Action = [
+          "aoss:APIAccessAll"
+        ]
+        Resource = "arn:aws:aoss:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:collection/*"
+      },
+      {
+        Sid    = "AllowAOSSDescribe"
+        Effect = "Allow"
+        Action = [
+          "aoss:CreateCollection",
+          "aoss:ListCollections",
+          "aoss:BatchGetCollection",
+          "aoss:DeleteCollection",
+          "aoss:CreateAccessPolicy",
+          "aoss:ListAccessPolicies",
+          "aoss:UpdateAccessPolicy",
+          "aoss:CreateSecurityPolicy",
+          "aoss:GetSecurityPolicy",
+          "aoss:UpdateSecurityPolicy",
+          "iam:ListUsers",
+          "iam:ListRoles"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
