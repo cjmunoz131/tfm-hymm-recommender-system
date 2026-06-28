@@ -304,7 +304,7 @@ def input_fn(request_body, content_type="application/json"):
 
 
 def predict_fn(input_data, model_dict):
-    """Genera embedding de item (64D) + pesos de atención."""
+    """Genera embedding de item (64D) + pesos de atención + passthrough IDs."""
     tower = model_dict["model"]
 
     item = torch.tensor([input_data["item_idx"]], dtype=torch.long)
@@ -316,6 +316,8 @@ def predict_fn(input_data, model_dict):
         embedding, attn = tower(item, genres, text_emb, img_emb)
 
     return {
+        "item_idx": input_data["item_idx"],
+        "movie_id": input_data.get("movie_id"),
         "item_embedding": embedding[0].numpy().tolist(),
         "attention_weights": {
             "category": attn[0][0].item(),
