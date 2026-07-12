@@ -364,3 +364,60 @@ resource "aws_lakeformation_permissions" "sagemaker_silver_all_tables" {
     wildcard      = true
   }
 }
+
+
+# ---------------------------------------------------------------
+# ACCESO SSO ADMIN — ALL sobre tablas Gold Recommendations para Athena
+# ---------------------------------------------------------------
+resource "aws_lakeformation_permissions" "sso_admin_recommendations_database" {
+  provider   = aws.account1
+  principal  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/us-east-2/AWSReservedSSO_AdministratorAccess_cabda561aaa68976"
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["DESCRIBE", "ALTER", "CREATE_TABLE"]
+
+  database {
+    name = module.aws_data_governance_catalog_gold_recommendations_database_glue_layer_module.name
+  }
+}
+
+resource "aws_lakeformation_permissions" "sso_admin_recommendations_all_tables" {
+  provider   = aws.account1
+  principal  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-reserved/sso.amazonaws.com/us-east-2/AWSReservedSSO_AdministratorAccess_cabda561aaa68976"
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["ALL"]
+
+  table {
+    database_name = module.aws_data_governance_catalog_gold_recommendations_database_glue_layer_module.name
+    wildcard      = true
+  }
+}
+
+# ---------------------------------------------------------------
+# SAGEMAKER ROLE — Lake Formation permisos para Gold Recommendations
+# ---------------------------------------------------------------
+resource "aws_lakeformation_permissions" "sagemaker_recommendations_database" {
+  provider   = aws.account1
+  principal  = module.sagemaker-notebook-instance.sagemaker_instance_role_arn
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["DESCRIBE", "CREATE_TABLE", "ALTER"]
+
+  database {
+    name = module.aws_data_governance_catalog_gold_recommendations_database_glue_layer_module.name
+  }
+}
+
+resource "aws_lakeformation_permissions" "sagemaker_recommendations_all_tables" {
+  provider   = aws.account1
+  principal  = module.sagemaker-notebook-instance.sagemaker_instance_role_arn
+  depends_on = [aws_lakeformation_data_lake_settings.admin]
+
+  permissions = ["ALL"]
+
+  table {
+    database_name = module.aws_data_governance_catalog_gold_recommendations_database_glue_layer_module.name
+    wildcard      = true
+  }
+}

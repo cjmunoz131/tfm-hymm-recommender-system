@@ -340,6 +340,22 @@ module "aws_data_governance_catalog_gold_database_glue_layer_module" {
   }
 }
 
+### GOLD LAYER — ML Recommendations ###
+module "aws_data_governance_catalog_gold_recommendations_database_glue_layer_module" {
+  providers = {
+    aws.main = aws.account1
+  }
+  source                       = "git@github.com:cjmunoz131/terraform_modules//modules/aws/aws-data-governance-catalog-database-glue"
+  catalog_database_name        = format("%s_%s_%s_%s", var.project, var.governance_domain, "ml_recommendations", "gold")
+  catalog_database_description = "Gold database for ML recommendations and explainability for ${var.project}"
+  parameters = {
+    location             = "s3://${module.aws_storage_gold_objects_s3_bucket_layer_module.bucket_id}/data/ml_recommendations",
+    created_by           = "terraform"
+    environment          = terraform.workspace
+    data_layer           = "gold"
+  }
+}
+
 ### GLUE CRAWLER LAYER ###
 module "aws-data-governance-metadata-tmdb-crawler-glue-layer-module" {
   providers = {
