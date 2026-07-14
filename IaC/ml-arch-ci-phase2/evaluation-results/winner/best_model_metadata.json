@@ -1,0 +1,24 @@
+{
+  "winner_model": "twoheads",
+  "winner_score": 0.5336170629039292,
+  "winner_metrics": {
+    "rmse_stars": 0.7786356097074342,
+    "hit_rate_at_k": 0.5768764083896689,
+    "ndcg_at_k": 0.2978008411814125,
+    "precision_at_k": 0.7280626987954575,
+    "recall_at_k": 0.7293379024760143,
+    "explainability": {
+      "category_pct": 4.105984687805176,
+      "text_pct": 87.52445220947266,
+      "image_pct": 8.369577407836914
+    },
+    "bce": 1.6423678331185805,
+    "f1_quality": 0.7873417671540361,
+    "accuracy": 0.7286529557438045
+  },
+  "evaluation_timestamp": "2026-06-23T20:42:03Z",
+  "evaluation_config": {
+    "k": 15,
+    "num_decoys": 99
+  }
+}

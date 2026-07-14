@@ -1,0 +1,10 @@
+{
+  "num_users": 610,
+  "num_items": 9594,
+  "num_categories": 20,
+  "emb_dim": 128,
+  "aws_dim": 1024,
+  "dropout": 0.1,
+  "mode": "multitask_twoheads",
+  "neg_ratio": 4
+}

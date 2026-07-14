@@ -1,0 +1,75 @@
+{
+  "mode": "twoheads",
+  "test_pointwise": {
+    "mse": 0.037892088294029236,
+    "rmse": 0.19465890242685854,
+    "rmse_stars": 0.7786356097074342,
+    "explainability": {
+      "category_pct": 4.105984687805176,
+      "text_pct": 87.52445220947266,
+      "image_pct": 8.369577407836914
+    },
+    "n_samples": 9287,
+    "bce": 1.6423678331185805,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.7286529557438045,
+    "precision_quality": 0.7671435619128973,
+    "recall_quality": 0.8086323452924101,
+    "f1_quality": 0.7873417671540361,
+    "confusion_matrix": {
+      "tp": 4665,
+      "fp": 1416,
+      "fn": 1104,
+      "tn": 2102
+    }
+  },
+  "coldstart_pointwise": {
+    "mse": 0.04307473078370094,
+    "rmse": 0.20754452723138941,
+    "rmse_stars": 0.8301781089255577,
+    "explainability": {
+      "category_pct": 5.7368083000183105,
+      "text_pct": 81.67166137695312,
+      "image_pct": 12.59152889251709
+    },
+    "n_samples": 10387,
+    "bce": 1.8465362654048052,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.7154134976405936,
+    "precision_quality": 0.7170334751235121,
+    "recall_quality": 0.7310956062592285,
+    "f1_quality": 0.7239962601718553,
+    "confusion_matrix": {
+      "tp": 3877,
+      "fp": 1530,
+      "fn": 1426,
+      "tn": 3554
+    }
+  },
+  "ranking_true_neg": {
+    "hit_rate_at_k": 0.5768764083896689,
+    "ndcg_at_k": 0.2978008411814125,
+    "k": 15,
+    "total_evaluations": 5769
+  },
+  "precision_recall": {
+    "precision_at_k": 0.7280626987954575,
+    "recall_at_k": 0.7293379024760143,
+    "k": 15
+  },
+  "summary": {
+    "rmse_stars": 0.7786356097074342,
+    "hit_rate_at_k": 0.5768764083896689,
+    "ndcg_at_k": 0.2978008411814125,
+    "precision_at_k": 0.7280626987954575,
+    "recall_at_k": 0.7293379024760143,
+    "explainability": {
+      "category_pct": 4.105984687805176,
+      "text_pct": 87.52445220947266,
+      "image_pct": 8.369577407836914
+    },
+    "bce": 1.6423678331185805,
+    "f1_quality": 0.7873417671540361,
+    "accuracy": 0.7286529557438045
+  }
+}
