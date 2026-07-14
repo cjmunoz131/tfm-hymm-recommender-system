@@ -3,7 +3,7 @@
   "twoheads_score": 0.5336170629039292,
   "winner": "twoheads",
   "winner_summary": {
-    "rmse_stars": 0.7786356097074342,
+    "rmse_stars": 0.7333010621135577,
     "hit_rate_at_k": 0.5768764083896689,
     "ndcg_at_k": 0.2978008411814125,
     "precision_at_k": 0.7280626987954575,
