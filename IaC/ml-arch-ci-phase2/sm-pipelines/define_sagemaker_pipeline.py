@@ -460,6 +460,10 @@ def create_step_hpo_regression(params, role, session, step_splits):
                 s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
                 content_type="application/octet-stream",
             ),
+            "encoders": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
+                content_type="application/octet-stream",
+            ),
         },
     )
 
@@ -551,6 +555,10 @@ def create_step_hpo_twoheads(params, role, session, step_splits):
             ),
             "embeddings": sagemaker.inputs.TrainingInput(
                 s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/embeddings/",
+                content_type="application/octet-stream",
+            ),
+            "encoders": sagemaker.inputs.TrainingInput(
+                s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/encoders/",
                 content_type="application/octet-stream",
             ),
         },
