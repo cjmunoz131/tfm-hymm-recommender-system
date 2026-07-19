@@ -474,7 +474,7 @@
             "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/sagemaker-scripts/training\"",
             "sagemaker_program": "\"hpo_hymmrec_regression.py\"",
             "sagemaker_container_log_level": "20",
-            "sagemaker_job_name": "\"hymmrec-hpo-regression-2026-06-25-00-28-33-230\"",
+            "sagemaker_job_name": "\"hymmrec-hpo-regression-2026-07-19-21-06-29-974\"",
             "sagemaker_region": "\"us-east-1\"",
             "sagemaker_estimator_class_name": "\"PyTorch\"",
             "sagemaker_estimator_module": "\"sagemaker.pytorch.estimator\""
@@ -535,6 +535,17 @@
               },
               "ContentType": "application/octet-stream",
               "ChannelName": "embeddings"
+            },
+            {
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/encoders/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/octet-stream",
+              "ChannelName": "encoders"
             }
           ]
         },
@@ -618,7 +629,7 @@
             "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/sagemaker-scripts/training\"",
             "sagemaker_program": "\"hpo_hymmrec_twoheads.py\"",
             "sagemaker_container_log_level": "20",
-            "sagemaker_job_name": "\"hymmrec-hpo-twoheads-2026-06-25-00-28-33-657\"",
+            "sagemaker_job_name": "\"hymmrec-hpo-twoheads-2026-07-19-21-06-30-373\"",
             "sagemaker_region": "\"us-east-1\"",
             "sagemaker_estimator_class_name": "\"PyTorch\"",
             "sagemaker_estimator_module": "\"sagemaker.pytorch.estimator\""
@@ -691,6 +702,17 @@
               },
               "ContentType": "application/octet-stream",
               "ChannelName": "embeddings"
+            },
+            {
+              "DataSource": {
+                "S3DataSource": {
+                  "S3DataType": "S3Prefix",
+                  "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/model_artefacts/encoders/",
+                  "S3DataDistributionType": "FullyReplicated"
+                }
+              },
+              "ContentType": "application/octet-stream",
+              "ChannelName": "encoders"
             }
           ]
         },
