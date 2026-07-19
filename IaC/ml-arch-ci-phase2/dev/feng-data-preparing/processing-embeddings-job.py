@@ -312,7 +312,13 @@ def main():
 
     # 1. Cargar catálogo de películas
     logger.info("\n[PASO 1/3] Cargando catálogo de películas...")
-    df_movies = pd.read_parquet(input_movies)
+    # Soporta tablas Iceberg (carpeta con metadata/ y data/) o parquet directo
+    movies_data_path = os.path.join(input_movies, "data")
+    if os.path.isdir(movies_data_path):
+        logger.info(f"  Detectada estructura Iceberg, leyendo desde: {movies_data_path}")
+        df_movies = pd.read_parquet(movies_data_path)
+    else:
+        df_movies = pd.read_parquet(input_movies)
     logger.info(f"  → {len(df_movies):,} películas cargadas")
 
     # 2. Preparar sinopsis semántica

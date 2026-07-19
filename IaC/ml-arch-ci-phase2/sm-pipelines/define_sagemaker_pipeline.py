@@ -95,11 +95,17 @@ DEFAULT_SILVER_BUCKET = "hymmrec-dilkehousesilver01"
 DEFAULT_GOLD_BUCKET = "hymmrec-dilkehousegold01"
 DEFAULT_PLATINUM_BUCKET = "hymmrec-sagemaker-assets"
 
-# --- S3 Paths para scripts (subidos por Terraform) ---
-# Terraform sube dev/ → s3://PLATINUM_BUCKET/sagemaker-scripts/
+# --- Paths locales para scripts (el SDK los empaqueta y sube automáticamente) ---
+# Al hacer --upsert, el SDK crea sourcedir.tar.gz y lo sube a S3 por nosotros.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROCESSING_SCRIPTS_LOCAL = os.path.join(SCRIPT_DIR, "..", "dev", "feng-data-preparing")
+TRAINING_SCRIPTS_LOCAL = os.path.join(SCRIPT_DIR, "..", "dev", "training")
+EVALUATION_SCRIPTS_LOCAL = os.path.join(SCRIPT_DIR, "..", "dev", "evaluation")
+INFERENCE_SCRIPTS_LOCAL = os.path.join(SCRIPT_DIR, "..", "dev", "inference")
+
+# S3 paths para referencia (Processing Jobs que usan 'code=' con rutas S3 directas)
 SCRIPTS_S3_BASE = f"s3://{DEFAULT_PLATINUM_BUCKET}/sagemaker-scripts"
 PROCESSING_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/feng-data-preparing"
-TRAINING_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/training"
 EVALUATION_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/evaluation"
 INFERENCE_SCRIPTS_S3 = f"{SCRIPTS_S3_BASE}/inference"
 
@@ -398,7 +404,7 @@ def create_step_hpo_regression(params, role, session, step_splits):
     """
     regression_estimator = PyTorch(
         entry_point="hpo_hymmrec_regression.py",
-        source_dir=TRAINING_SCRIPTS_S3,
+        source_dir=TRAINING_SCRIPTS_LOCAL,
         role=role,
         instance_type=DEFAULT_HPO_INSTANCE,
         instance_count=1,
@@ -488,7 +494,7 @@ def create_step_hpo_twoheads(params, role, session, step_splits):
     """
     twoheads_estimator = PyTorch(
         entry_point="hpo_hymmrec_twoheads.py",
-        source_dir=TRAINING_SCRIPTS_S3,
+        source_dir=TRAINING_SCRIPTS_LOCAL,
         role=role,
         instance_type=DEFAULT_HPO_INSTANCE,
         instance_count=1,
@@ -584,7 +590,7 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
     """
     regression_estimator = PyTorch(
         entry_point="train_hymmrec_regression.py",
-        source_dir=TRAINING_SCRIPTS_S3,
+        source_dir=TRAINING_SCRIPTS_LOCAL,
         role=role,
         instance_type=DEFAULT_TRAINING_INSTANCE,
         instance_count=1,
@@ -653,7 +659,7 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
     """
     twoheads_estimator = PyTorch(
         entry_point="train_hymmrec_twoheads.py",
-        source_dir=TRAINING_SCRIPTS_S3,
+        source_dir=TRAINING_SCRIPTS_LOCAL,
         role=role,
         instance_type=DEFAULT_TRAINING_INSTANCE,
         instance_count=1,
@@ -809,7 +815,7 @@ def create_step_register_model(params, role, session, step_train_regression, ste
         name="RegisterModelTwoHeads",
         estimator=PyTorch(
             entry_point="train_hymmrec_twoheads.py",
-            source_dir=TRAINING_SCRIPTS_S3,
+            source_dir=TRAINING_SCRIPTS_LOCAL,
             role=role,
             instance_type=DEFAULT_TRAINING_INSTANCE,
             instance_count=1,
@@ -836,7 +842,7 @@ def create_step_register_model(params, role, session, step_train_regression, ste
         name="RegisterModelRegression",
         estimator=PyTorch(
             entry_point="train_hymmrec_regression.py",
-            source_dir=TRAINING_SCRIPTS_S3,
+            source_dir=TRAINING_SCRIPTS_LOCAL,
             role=role,
             instance_type=DEFAULT_TRAINING_INSTANCE,
             instance_count=1,
