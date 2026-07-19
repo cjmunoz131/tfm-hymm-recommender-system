@@ -242,17 +242,25 @@ def evaluate_test(model, test_loader, criterion_bce, criterion_mse, device, thre
     test_mse = running_mse / running_samples
     test_rmse_stars = (test_mse ** 0.5) * 4.0 if test_mse > 0 else 0.0
 
-    # Métricas de clasificación (sobre cabeza de interacción)
-    all_preds_int = torch.cat(all_preds_interaction)
-    all_targets_int = torch.cat(all_targets_interaction)
+    # Métricas de clasificación por UMBRAL DE CALIDAD (≥3.5★)
+    # Alineado con evaluation-job.py: evalúa la cabeza de rating como clasificador
+    # de calidad. NO usa la cabeza de interacción (que no tiene negativos en test).
+    all_preds_rat = torch.cat(all_preds_rating)
+    all_targets_rat = torch.cat(all_targets_rating)
 
-    predicted_labels = (all_preds_int >= threshold).float()
-    true_labels = all_targets_int
+    # Convertir a escala de estrellas (1-5)
+    pred_stars = all_preds_rat * 4.0 + 1.0
+    true_stars = all_targets_rat * 4.0 + 1.0
 
-    tp = ((predicted_labels == 1) & (true_labels == 1)).sum().item()
-    fp = ((predicted_labels == 1) & (true_labels == 0)).sum().item()
-    fn = ((predicted_labels == 0) & (true_labels == 1)).sum().item()
-    tn = ((predicted_labels == 0) & (true_labels == 0)).sum().item()
+    # Binarizar por umbral de calidad
+    quality_threshold = 3.5
+    predicted_quality = (pred_stars >= quality_threshold).float()
+    true_quality = (true_stars >= quality_threshold).float()
+
+    tp = ((predicted_quality == 1) & (true_quality == 1)).sum().item()
+    fp = ((predicted_quality == 1) & (true_quality == 0)).sum().item()
+    fn = ((predicted_quality == 0) & (true_quality == 1)).sum().item()
+    tn = ((predicted_quality == 0) & (true_quality == 0)).sum().item()
 
     accuracy = (tp + tn) / (tp + fp + fn + tn + 1e-8)
     precision = tp / (tp + fp + 1e-8)
@@ -267,11 +275,12 @@ def evaluate_test(model, test_loader, criterion_bce, criterion_mse, device, thre
         "test_bce": test_bce,
         "test_mse": test_mse,
         "test_rmse_stars": test_rmse_stars,
+        "quality_threshold_stars": quality_threshold,
         "test_accuracy": accuracy,
-        "test_precision": precision,
-        "test_recall": recall,
-        "test_f1": f1,
-        "confusion_matrix": {"tp": tp, "fp": fp, "fn": fn, "tn": tn},
+        "test_precision_quality": precision,
+        "test_recall_quality": recall,
+        "test_f1_quality": f1,
+        "confusion_matrix": {"tp": int(tp), "fp": int(fp), "fn": int(fn), "tn": int(tn)},
         "attn_category_pct": avg_attn[0].item(),
         "attn_text_pct": avg_attn[1].item(),
         "attn_image_pct": avg_attn[2].item(),
@@ -438,19 +447,20 @@ def main(args):
     logger.info(f"test_mse={test_metrics['test_mse']:.6f};")
     logger.info(f"test_rmse_stars={test_metrics['test_rmse_stars']:.4f};")
     logger.info(f"test_accuracy={test_metrics['test_accuracy']:.4f};")
-    logger.info(f"test_precision={test_metrics['test_precision']:.4f};")
-    logger.info(f"test_recall={test_metrics['test_recall']:.4f};")
-    logger.info(f"test_f1={test_metrics['test_f1']:.4f};")
+    logger.info(f"test_precision_quality={test_metrics['test_precision_quality']:.4f};")
+    logger.info(f"test_recall_quality={test_metrics['test_recall_quality']:.4f};")
+    logger.info(f"test_f1_quality={test_metrics['test_f1_quality']:.4f};")
 
     logger.info(f"\nMÉTRICAS FINALES DE TEST (Multi-Task Two-Heads):")
     logger.info(f"   - Total Loss: {test_metrics['test_total_loss']:.6f}")
     logger.info(f"   - BCE Loss (Ranking): {test_metrics['test_bce']:.6f}")
     logger.info(f"   - MSE Loss (Calidad): {test_metrics['test_mse']:.6f}")
     logger.info(f"   - RMSE (Estrellas): {test_metrics['test_rmse_stars']:.4f}")
-    logger.info(f"   - Accuracy: {test_metrics['test_accuracy']:.4f}")
-    logger.info(f"   - Precision: {test_metrics['test_precision']:.4f}")
-    logger.info(f"   - Recall: {test_metrics['test_recall']:.4f}")
-    logger.info(f"   - F1-Score: {test_metrics['test_f1']:.4f}")
+    logger.info(f"   - Quality Threshold: {test_metrics['quality_threshold_stars']}★")
+    logger.info(f"   - Accuracy (Quality): {test_metrics['test_accuracy']:.4f}")
+    logger.info(f"   - Precision (Quality): {test_metrics['test_precision_quality']:.4f}")
+    logger.info(f"   - Recall (Quality): {test_metrics['test_recall_quality']:.4f}")
+    logger.info(f"   - F1 (Quality): {test_metrics['test_f1_quality']:.4f}")
     logger.info(f"   - Confusion Matrix: {test_metrics['confusion_matrix']}")
     logger.info(f"\nEXPLICABILIDAD GLOBAL (Atención):")
     logger.info(f"   - Categoría: {test_metrics['attn_category_pct']:.2f}%")
@@ -477,6 +487,13 @@ def main(args):
     with open(metrics_path, "w") as f:
         json.dump(all_metrics, f, indent=2, default=str)
     logger.info(f"Métricas guardadas: {metrics_path}")
+
+    # También guardar en model_dir para que persista en model.tar.gz
+    # (SM_OUTPUT_DATA_DIR no se empaqueta cuando se ejecuta como TrainingStep en Pipeline)
+    metrics_path_model = os.path.join(args.model_dir, "training_metrics.json")
+    with open(metrics_path_model, "w") as f:
+        json.dump(all_metrics, f, indent=2, default=str)
+    logger.info(f"Métricas guardadas (model_dir): {metrics_path_model}")
 
     model_metadata = {
         "num_users": num_users,

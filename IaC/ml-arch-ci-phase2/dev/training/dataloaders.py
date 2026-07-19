@@ -99,7 +99,14 @@ class MultiTaskRecDataset(Dataset):
       - interaction ∈ {0.0, 1.0} → Para cabeza BCE (ranking/retrieval)
       - rating ∈ [0, 1] → Para cabeza MSE (calidad, solo sobre positivos)
 
-    Los negativos tienen: interaction=0.0, rating=0.0
+    La variable interaction se define por la columna 'is_negative':
+      - is_negative=True  → interaction=0.0 (negativo sintético del muestreo)
+      - is_negative=False → interaction=1.0 (interacción REAL, sin importar el rating)
+
+    Esto distingue correctamente entre:
+      - Un rating de 1★ (rating_scaled=0.0) que ES una interacción real → interaction=1.0
+      - Un negativo sintético (rating_scaled=0.0) que NO es interacción → interaction=0.0
+
     El enmascaramiento del MSE (solo positivos) se hace en el training loop.
     """
 
@@ -111,11 +118,17 @@ class MultiTaskRecDataset(Dataset):
         matriz_generos = np.vstack(df["genres_multihot"].values)
         self.genres = torch.tensor(matriz_generos, dtype=torch.float32)
 
-        # Variable binaria: rating_scaled > 0 → positivo (1.0), else → negativo (0.0)
-        interacciones = (df["rating_scaled"].values > 0.0).astype(np.float32)
+        # Variable binaria basada en 'is_negative' (si existe), no en el rating
+        if "is_negative" in df.columns:
+            # is_negative=True → interaction=0, is_negative=False → interaction=1
+            interacciones = (~df["is_negative"].values).astype(np.float32)
+        else:
+            # Fallback para compatibilidad: si no hay columna is_negative,
+            # asumimos que TODAS las filas son interacciones reales (val/test sin negativos)
+            interacciones = np.ones(len(df), dtype=np.float32)
         self.interactions = torch.tensor(interacciones, dtype=torch.float32)
 
-        # Variable continua: rating_scaled (0.0 para negativos)
+        # Variable continua: rating_scaled (0.0 para negativos sintéticos)
         self.ratings = torch.tensor(df["rating_scaled"].values, dtype=torch.float32)
 
         self.item_ids_original = df["movieId"].values
@@ -156,26 +169,27 @@ def apply_negative_sampling(
     seed: int = 42,
 ) -> pd.DataFrame:
     """
-    Genera muestras negativas EXCLUSIVAMENTE para el dataset de entrenamiento.
+    Genera muestras negativas para un dataset (train o validación).
     Se ejecuta en memoria durante la inicialización del DataLoader.
 
     Estrategia (ratio por positivo):
       - Para cada interacción positiva, muestrea `neg_ratio` ítems que el
         usuario NUNCA ha visto (en todo el historial global, no solo train)
-      - Los negativos reciben rating_scaled = 0.0
+      - Los negativos reciben rating_scaled = 0.0 y is_negative = True
+      - Los positivos reciben is_negative = False
       - Se restauran userId_idx, movieId_idx y genres_multihot desde mapeos
 
     Esto garantiza un balance consistente independiente del número de
     interacciones del usuario (ratio 1:neg_ratio para todos).
 
     Args:
-        df_train: DataFrame de entrenamiento (solo positivos)
+        df_train: DataFrame de interacciones reales (positivos)
         df_all: DataFrame completo (train+val+test) para historial global
         neg_ratio: Negativos por cada interacción positiva (default: 4 → ratio 1:4)
         seed: Semilla para reproducibilidad
 
     Returns:
-        DataFrame con positivos + negativos mezclados
+        DataFrame con positivos + negativos mezclados, columna 'is_negative' incluida
     """
     rng = np.random.default_rng(seed)
 
@@ -226,6 +240,7 @@ def apply_negative_sampling(
                     "movieId_idx": item_idx_map.get(item_id),
                     "genres_multihot": item_genres_map.get(item_id),
                     "rating_scaled": 0.0,
+                    "is_negative": True,
                 }
             )
 
@@ -237,8 +252,9 @@ def apply_negative_sampling(
     df_negatives["movieId_idx"] = df_negatives["movieId_idx"].astype(int)
 
     # Columnas necesarias para PyTorch
-    columnas = ["userId", "movieId", "userId_idx", "movieId_idx", "genres_multihot", "rating_scaled"]
-    df_positives = df_train[columnas].copy()
+    columnas = ["userId", "movieId", "userId_idx", "movieId_idx", "genres_multihot", "rating_scaled", "is_negative"]
+    df_positives = df_train[columnas if "is_negative" in df_train.columns else columnas[:-1]].copy()
+    df_positives["is_negative"] = False
 
     df_final = pd.concat([df_positives, df_negatives[columnas]], ignore_index=True)
     df_final = df_final.sample(frac=1, random_state=seed).reset_index(drop=True)
@@ -397,8 +413,17 @@ def load_datasets_and_create_loaders(
         df_train_ns = apply_negative_sampling(
             df_train, df_all, neg_ratio=neg_ratio, seed=seed
         )
+        # Muestreo negativo en validación con semilla FIJA (diferente a train)
+        # para tener una val_BCE comparable y estable entre epochs
+        val_neg_seed = seed + 1000  # Semilla fija diferente a train
+        df_val_ns = apply_negative_sampling(
+            df_val, df_all, neg_ratio=neg_ratio, seed=val_neg_seed
+        )
+        logger.info(f"  Val con muestreo negativo (semilla fija={val_neg_seed})")
+
         train_dataset = MultiTaskRecDataset(df_train_ns, dict_embeddings)
-        val_dataset = MultiTaskRecDataset(df_val, dict_embeddings)
+        val_dataset = MultiTaskRecDataset(df_val_ns, dict_embeddings)
+        # Test SIN muestreo negativo — se evalúa con protocolo de ranking en evaluation-job
         test_dataset = MultiTaskRecDataset(df_test, dict_embeddings)
     else:
         # Regresión (single-head): sin muestreo negativo

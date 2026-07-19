@@ -281,9 +281,9 @@ def evaluate_ranking_true_negatives(
 def evaluate_pointwise_metrics(model, df_eval, dict_embeddings, device, mode="regression", batch_size=512):
     """
     Calcula métricas pointwise sobre un DataFrame (test o cold-start):
-      - Regresión: MSE, RMSE, RMSE Stars
-      - Two-Heads: BCE, Accuracy, Precision, Recall, F1, Confusion Matrix
-      - Ambos: Explicabilidad promedio
+      - Ambos modelos: MSE, RMSE, RMSE Stars, Quality Classification (Accuracy,
+        Precision, Recall, F1 por umbral ≥3.5★), Explicabilidad promedio
+      - Two-Heads adicional: BCE (sobre cabeza de interacción)
     """
     model.eval()
     from torch.utils.data import DataLoader, Dataset
@@ -361,29 +361,37 @@ def evaluate_pointwise_metrics(model, df_eval, dict_embeddings, device, mode="re
         "n_samples": n_samples,
     }
 
-    # Métricas de clasificación por umbral de estrellas (solo two-heads)
+    # Métricas de clasificación por umbral de estrellas (AMBOS modelos)
     # Evalúa la cabeza de RATING como clasificador de calidad: ¿predice >= 3.5★?
-    # Alineado con evaluar_clasificacion_recomendador_mtl del notebook
+    quality_threshold = 3.5
+    pred_stars = pred_ratings * 4.0 + 1.0
+    true_stars = true_ratings * 4.0 + 1.0
+
+    true_quality = (true_stars >= quality_threshold).astype(float)
+    pred_quality = (pred_stars >= quality_threshold).astype(float)
+
+    tp = float(((pred_quality == 1) & (true_quality == 1)).sum())
+    fp = float(((pred_quality == 1) & (true_quality == 0)).sum())
+    fn = float(((pred_quality == 0) & (true_quality == 1)).sum())
+    tn = float(((pred_quality == 0) & (true_quality == 0)).sum())
+
+    accuracy = (tp + tn) / (tp + fp + fn + tn + 1e-8)
+    precision_cls = tp / (tp + fp + 1e-8)
+    recall_cls = tp / (tp + fn + 1e-8)
+    f1 = 2 * precision_cls * recall_cls / (precision_cls + recall_cls + 1e-8)
+
+    metrics.update({
+        "quality_threshold_stars": quality_threshold,
+        "accuracy": accuracy,
+        "precision_quality": precision_cls,
+        "recall_quality": recall_cls,
+        "f1_quality": f1,
+        "confusion_matrix": {"tp": int(tp), "fp": int(fp), "fn": int(fn), "tn": int(tn)},
+    })
+
+    # BCE solo para two-heads (requiere la cabeza de interacción)
     if mode == "twoheads" and all_preds_interaction:
         pred_int = np.array(all_preds_interaction)
-
-        # Binarización por umbral de estrellas (cabeza de rating)
-        quality_threshold = 3.5
-        pred_stars = pred_ratings * 4.0 + 1.0
-        true_stars = true_ratings * 4.0 + 1.0
-
-        true_quality = (true_stars >= quality_threshold).astype(float)
-        pred_quality = (pred_stars >= quality_threshold).astype(float)
-
-        tp = float(((pred_quality == 1) & (true_quality == 1)).sum())
-        fp = float(((pred_quality == 1) & (true_quality == 0)).sum())
-        fn = float(((pred_quality == 0) & (true_quality == 1)).sum())
-        tn = float(((pred_quality == 0) & (true_quality == 0)).sum())
-
-        accuracy = (tp + tn) / (tp + fp + fn + tn + 1e-8)
-        precision_cls = tp / (tp + fp + 1e-8)
-        recall_cls = tp / (tp + fn + 1e-8)
-        f1 = 2 * precision_cls * recall_cls / (precision_cls + recall_cls + 1e-8)
 
         bce = float(-np.mean(
             (true_ratings > 0).astype(float) * np.log(pred_int + 1e-8) +
@@ -392,12 +400,6 @@ def evaluate_pointwise_metrics(model, df_eval, dict_embeddings, device, mode="re
 
         metrics.update({
             "bce": bce,
-            "quality_threshold_stars": quality_threshold,
-            "accuracy": accuracy,
-            "precision_quality": precision_cls,
-            "recall_quality": recall_cls,
-            "f1_quality": f1,
-            "confusion_matrix": {"tp": int(tp), "fp": int(fp), "fn": int(fn), "tn": int(tn)},
         })
 
     return metrics
@@ -504,11 +506,13 @@ def evaluate_model_complete(model, mode, df_test, df_coldstart, df_all, dict_emb
         "precision_at_k": results["precision_recall"]["precision_at_k"],
         "recall_at_k": results["precision_recall"]["recall_at_k"],
         "explainability": results["test_pointwise"]["explainability"],
+        "accuracy": results["test_pointwise"]["accuracy"],
+        "f1_quality": results["test_pointwise"]["f1_quality"],
+        "precision_quality": results["test_pointwise"]["precision_quality"],
+        "recall_quality": results["test_pointwise"]["recall_quality"],
     }
     if "bce" in results["test_pointwise"]:
         results["summary"]["bce"] = results["test_pointwise"]["bce"]
-        results["summary"]["f1_quality"] = results["test_pointwise"]["f1_quality"]
-        results["summary"]["accuracy"] = results["test_pointwise"]["accuracy"]
 
     return results
 

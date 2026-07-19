@@ -338,6 +338,13 @@ def main(args):
         json.dump(all_metrics, f, indent=2, default=str)
     logger.info(f"Métricas guardadas: {metrics_path}")
 
+    # También guardar en model_dir para que persista en model.tar.gz
+    # (SM_OUTPUT_DATA_DIR no se empaqueta cuando se ejecuta como TrainingStep en Pipeline)
+    metrics_path_model = os.path.join(args.model_dir, "training_metrics.json")
+    with open(metrics_path_model, "w") as f:
+        json.dump(all_metrics, f, indent=2, default=str)
+    logger.info(f"Métricas guardadas (model_dir): {metrics_path_model}")
+
     # Guardar metadata del modelo para inferencia
     model_metadata = {
         "num_users": num_users,
