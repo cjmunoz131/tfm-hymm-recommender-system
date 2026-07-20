@@ -70,7 +70,7 @@ from sagemaker.workflow.parameters import (
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.properties import PropertyFile
 from sagemaker.workflow.step_collections import RegisterModel
-from sagemaker.workflow.steps import ProcessingStep, TrainingStep, TuningStep
+from sagemaker.workflow.steps import CacheConfig, ProcessingStep, TrainingStep, TuningStep
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -122,6 +122,12 @@ DEFAULT_PACKAGING_INSTANCE = "ml.m5.large"
 HPO_MAX_JOBS = 12
 HPO_MAX_PARALLEL_JOBS = 3
 HPO_STRATEGY = "Bayesian"
+
+# --- Cache Config ---
+# Permite reusar resultados de steps anteriores si inputs/params no cambiaron.
+# expire_after: tiempo máximo de cache (30 días). Si los datos no cambian,
+# el pipeline salta steps ya ejecutados y va directo a los que necesitan re-run.
+CACHE_CONFIG = CacheConfig(enable_caching=True, expire_after="P30D")
 
 # --- Model Registry ---
 MODEL_PACKAGE_GROUP_NAME = "hymmrec-multimodal-recommender"
@@ -228,6 +234,7 @@ def create_step_feature_engineering(params, role, session):
     step_feng = ProcessingStep(
         name="FeatureEngineering",
         processor=pyspark_processor,
+        cache_config=CACHE_CONFIG,
         inputs=[
             ProcessingInput(
                 source=f"s3://{DEFAULT_SILVER_BUCKET}/data/obt_movie_affinity/cleansed_ratings/",
@@ -289,6 +296,7 @@ def create_step_embeddings(params, role, session):
     step_embeddings = ProcessingStep(
         name="EmbeddingsGeneration",
         processor=sklearn_processor,
+        cache_config=CACHE_CONFIG,
         inputs=[
             ProcessingInput(
                 source=f"s3://{DEFAULT_SILVER_BUCKET}/data/obt_movie_affinity/cleansed_movies/",
@@ -346,6 +354,7 @@ def create_step_data_splits(params, role, session, step_feng, step_embeddings):
     step_splits = ProcessingStep(
         name="DatasetPreparation",
         processor=sklearn_splits_processor,
+        cache_config=CACHE_CONFIG,
         inputs=[
             ProcessingInput(
                 source=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/model_artefacts/interactions/",
@@ -457,6 +466,7 @@ def create_step_hpo_regression(params, role, session, step_splits):
     step_hpo_regression = TuningStep(
         name="HPORegression",
         tuner=regression_tuner,
+        cache_config=CACHE_CONFIG,
         inputs={
             "train": sagemaker.inputs.TrainingInput(
                 s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
@@ -554,6 +564,7 @@ def create_step_hpo_twoheads(params, role, session, step_splits):
     step_hpo_twoheads = TuningStep(
         name="HPOTwoHeads",
         tuner=twoheads_tuner,
+        cache_config=CACHE_CONFIG,
         inputs={
             "train": sagemaker.inputs.TrainingInput(
                 s3_data=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/datasets/",
@@ -606,6 +617,12 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
             "scheduler_patience": 2,
             "scheduler_factor": 0.5,
             "min_lr": 1e-6,
+            # Best HPs del HPO (hymmrec-hpo-regression-2026-07-19)
+            "lr": 0.0013591234249190794,
+            "batch_size": 128,
+            "emb_dim": 64,
+            "dropout": 0.16302531345128762,
+            "weight_decay": 2.203083422500424e-06,
         },
         tags=[
             {"Key": "project", "Value": "hymmrec"},
@@ -676,6 +693,12 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
             "scheduler_patience": 2,
             "scheduler_factor": 0.5,
             "min_lr": 1e-6,
+            # Best HPs del HPO (hymmrec-hpo-twoheads-2026-07-19)
+            "lr": 0.0005506497164851083,
+            "batch_size": 128,
+            "emb_dim": 64,
+            "dropout": 0.3612786014633136,
+            "weight_decay": 0.00025149521459352905,
         },
         tags=[
             {"Key": "project", "Value": "hymmrec"},
@@ -737,6 +760,7 @@ def create_step_evaluation(params, role, session, step_train_regression, step_tr
         py_version="py310",
         sagemaker_session=session,
         base_job_name="hymmrec-evaluation",
+        command=["python3"],
         tags=[
             {"Key": "project", "Value": "hymmrec"},
             {"Key": "phase", "Value": "evaluation"},
