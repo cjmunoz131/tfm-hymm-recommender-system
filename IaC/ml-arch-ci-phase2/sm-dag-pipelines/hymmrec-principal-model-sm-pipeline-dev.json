@@ -208,6 +208,10 @@
             "Value": "feature-engineering"
           }
         ]
+      },
+      "CacheConfig": {
+        "Enabled": true,
+        "ExpireAfter": "P30D"
       }
     },
     {
@@ -296,6 +300,10 @@
             "Value": "embeddings-generation"
           }
         ]
+      },
+      "CacheConfig": {
+        "Enabled": true,
+        "ExpireAfter": "P30D"
       }
     },
     {
@@ -407,7 +415,11 @@
       "DependsOn": [
         "FeatureEngineering",
         "EmbeddingsGeneration"
-      ]
+      ],
+      "CacheConfig": {
+        "Enabled": true,
+        "ExpireAfter": "P30D"
+      }
     },
     {
       "Name": "HPORegression",
@@ -471,10 +483,10 @@
             "epochs": "15",
             "patience": "2",
             "num_workers": "2",
-            "sagemaker_submit_directory": "\"s3://sagemaker-us-east-1-697682206292/hymmrec-hpo-regression-2026-07-19-23-04-23-249/source/sourcedir.tar.gz\"",
+            "sagemaker_submit_directory": "\"s3://sagemaker-us-east-1-697682206292/hymmrec-hpo-regression-2026-07-20-17-12-07-244/source/sourcedir.tar.gz\"",
             "sagemaker_program": "\"hpo_hymmrec_regression.py\"",
             "sagemaker_container_log_level": "20",
-            "sagemaker_job_name": "\"hymmrec-hpo-regression-2026-07-19-23-04-23-249\"",
+            "sagemaker_job_name": "\"hymmrec-hpo-regression-2026-07-20-17-12-07-244\"",
             "sagemaker_region": "\"us-east-1\"",
             "sagemaker_estimator_class_name": "\"PyTorch\"",
             "sagemaker_estimator_module": "\"sagemaker.pytorch.estimator\""
@@ -562,7 +574,11 @@
       },
       "DependsOn": [
         "DatasetPreparation"
-      ]
+      ],
+      "CacheConfig": {
+        "Enabled": true,
+        "ExpireAfter": "P30D"
+      }
     },
     {
       "Name": "HPOTwoHeads",
@@ -626,10 +642,10 @@
             "patience": "3",
             "num_workers": "2",
             "neg_ratio": "4",
-            "sagemaker_submit_directory": "\"s3://sagemaker-us-east-1-697682206292/hymmrec-hpo-twoheads-2026-07-19-23-04-23-734/source/sourcedir.tar.gz\"",
+            "sagemaker_submit_directory": "\"s3://sagemaker-us-east-1-697682206292/hymmrec-hpo-twoheads-2026-07-20-17-12-07-817/source/sourcedir.tar.gz\"",
             "sagemaker_program": "\"hpo_hymmrec_twoheads.py\"",
             "sagemaker_container_log_level": "20",
-            "sagemaker_job_name": "\"hymmrec-hpo-twoheads-2026-07-19-23-04-23-734\"",
+            "sagemaker_job_name": "\"hymmrec-hpo-twoheads-2026-07-20-17-12-07-817\"",
             "sagemaker_region": "\"us-east-1\"",
             "sagemaker_estimator_class_name": "\"PyTorch\"",
             "sagemaker_estimator_module": "\"sagemaker.pytorch.estimator\""
@@ -729,7 +745,11 @@
       },
       "DependsOn": [
         "DatasetPreparation"
-      ]
+      ],
+      "CacheConfig": {
+        "Enabled": true,
+        "ExpireAfter": "P30D"
+      }
     },
     {
       "Name": "TrainingRegression",
@@ -812,7 +832,12 @@
           "scheduler_patience": "2",
           "scheduler_factor": "0.5",
           "min_lr": "1e-06",
-          "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/hymmrec-train-regression-2026-07-19-23-04-24-132/source/sourcedir.tar.gz\"",
+          "lr": "0.0013591234249190794",
+          "batch_size": "128",
+          "emb_dim": "64",
+          "dropout": "0.16302531345128762",
+          "weight_decay": "2.203083422500424e-06",
+          "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/hymmrec-train-regression-2026-07-20-17-12-08-219/source/sourcedir.tar.gz\"",
           "sagemaker_program": "\"train_hymmrec_regression.py\"",
           "sagemaker_container_log_level": "20",
           "sagemaker_region": "\"us-east-1\""
@@ -934,7 +959,12 @@
           "scheduler_patience": "2",
           "scheduler_factor": "0.5",
           "min_lr": "1e-06",
-          "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/hymmrec-train-twoheads-2026-07-19-23-04-24-279/source/sourcedir.tar.gz\"",
+          "lr": "0.0005506497164851083",
+          "batch_size": "128",
+          "emb_dim": "64",
+          "dropout": "0.3612786014633136",
+          "weight_decay": "0.00025149521459352905",
+          "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/hymmrec-train-twoheads-2026-07-20-17-12-08-418/source/sourcedir.tar.gz\"",
           "sagemaker_program": "\"train_hymmrec_twoheads.py\"",
           "sagemaker_container_log_level": "20",
           "sagemaker_region": "\"us-east-1\""
