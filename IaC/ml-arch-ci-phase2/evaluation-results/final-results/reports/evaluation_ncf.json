@@ -1,0 +1,81 @@
+{
+  "mode": "ncf_baseline",
+  "test_pointwise": {
+    "mse": 0.6260,
+    "rmse": 0.7912,
+    "rmse_stars": 0.7912,
+    "explainability": {
+      "category_pct": null,
+      "text_pct": null,
+      "image_pct": null
+    },
+    "n_samples": 9287,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.7268,
+    "precision_quality": 0.7744,
+    "recall_quality": 0.7906,
+    "f1_quality": 0.7824,
+    "confusion_matrix": {
+      "tp": null,
+      "fp": null,
+      "fn": null,
+      "tn": null
+    }
+  },
+  "coldstart_pointwise": {
+    "mse": 0.8562,
+    "rmse": 0.9253,
+    "rmse_stars": 0.9253,
+    "explainability": {
+      "category_pct": null,
+      "text_pct": null,
+      "image_pct": null
+    },
+    "n_samples": 10387,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.6045,
+    "precision_quality": 0.6926,
+    "recall_quality": 0.4052,
+    "f1_quality": 0.5113,
+    "confusion_matrix": {
+      "tp": null,
+      "fp": null,
+      "fn": null,
+      "tn": null
+    }
+  },
+  "ranking_true_neg": {
+    "hit_rate_at_k": 0.5953,
+    "ndcg_at_k": 0.2843,
+    "k": 15,
+    "total_evaluations": 5769
+  },
+  "precision_recall": {
+    "precision_at_k": 0.7238,
+    "recall_at_k": 0.7214,
+    "k": 15
+  },
+  "summary": {
+    "rmse_stars": 0.7912,
+    "hit_rate_at_k": 0.5953,
+    "ndcg_at_k": 0.2843,
+    "precision_at_k": 0.7238,
+    "recall_at_k": 0.7214,
+    "explainability": {
+      "category_pct": null,
+      "text_pct": null,
+      "image_pct": null
+    },
+    "accuracy": 0.7268,
+    "f1_quality": 0.7824,
+    "precision_quality": 0.7744,
+    "recall_quality": 0.7906
+  },
+  "notes": {
+    "algorithm": "NCF - NeuMF (Neural Collaborative Filtering)",
+    "architecture": "GMF + MLP fusion (NeuMF)",
+    "rmse_stars_note": "NCF RMSE reportado directamente en escala 1-5 estrellas (no normalizado 0-4)",
+    "cold_start_ranking_note": "HR@15=0.0019 y NDCG@15=0.0005 confirman colapso total en cold-start — peor que SVD (HR@15=0.0113). Sin embeddings de contenido, NCF no puede generalizar a usuarios/items sin historial.",
+    "cold_start_total_evaluations": 5303
+  }
+}
