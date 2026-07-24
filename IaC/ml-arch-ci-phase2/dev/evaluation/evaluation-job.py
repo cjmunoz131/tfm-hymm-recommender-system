@@ -619,6 +619,18 @@ def main():
 
     # 2. Cargar modelo de Regresión
     logger.info("\n[PASO 2] Cargando modelo de Regresión...")
+
+    # Extraer model.tar.gz si fue descargado como artefacto del Pipeline
+    # (Pipeline pasa S3ModelArtifacts que es un .tar.gz, no archivos sueltos)
+    for model_subdir in ["regression", "twoheads"]:
+        model_dir_path = os.path.join(models_base, model_subdir)
+        tar_path = os.path.join(model_dir_path, "model.tar.gz")
+        if os.path.exists(tar_path) and not os.path.exists(os.path.join(model_dir_path, "model.pth")):
+            import tarfile
+            logger.info(f"  Extrayendo {tar_path}...")
+            with tarfile.open(tar_path, "r:gz") as tar:
+                tar.extractall(path=model_dir_path)
+
     reg_model_path = os.path.join(models_base, "regression", "model.pth")
     reg_meta = load_model_metadata(os.path.join(models_base, "regression"))
     emb_dim = reg_meta.get("emb_dim", args.emb_dim)
@@ -673,6 +685,15 @@ def main():
     # Comparación y ganador
     with open(os.path.join(output_path, "model_comparison.json"), "w") as f:
         json.dump(comparison, f, indent=2, default=str)
+
+    # evaluation_report.json (requerido por el QualityGateCheck del Pipeline)
+    evaluation_report = {
+        "winner_rmse_stars": comparison["winner_summary"]["rmse_stars"],
+        "winner": comparison["winner"],
+        "winner_score": max(comparison["regression_score"], comparison["twoheads_score"]),
+    }
+    with open(os.path.join(output_path, "evaluation_report.json"), "w") as f:
+        json.dump(evaluation_report, f, indent=2)
 
     # Metadata del ganador (para Model Registry)
     winner_meta = {

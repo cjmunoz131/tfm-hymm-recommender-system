@@ -832,11 +832,11 @@
           "scheduler_patience": "2",
           "scheduler_factor": "0.5",
           "min_lr": "1e-06",
-          "lr": "0.0013591234249190794",
-          "batch_size": "128",
-          "emb_dim": "64",
-          "dropout": "0.16302531345128762",
-          "weight_decay": "2.203083422500424e-06",
+          "lr": "0.0002838743621574962",
+          "batch_size": "256",
+          "emb_dim": "128",
+          "dropout": "0.41655263256088393",
+          "weight_decay": "1.1497633801683068e-06",
           "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/hymmrec-train-regression-2026-07-20-17-12-08-219/source/sourcedir.tar.gz\"",
           "sagemaker_program": "\"train_hymmrec_regression.py\"",
           "sagemaker_container_log_level": "20",
@@ -959,11 +959,11 @@
           "scheduler_patience": "2",
           "scheduler_factor": "0.5",
           "min_lr": "1e-06",
-          "lr": "0.0005506497164851083",
+          "lr": "0.00018431337415071667",
           "batch_size": "128",
-          "emb_dim": "64",
-          "dropout": "0.3612786014633136",
-          "weight_decay": "0.00025149521459352905",
+          "emb_dim": "128",
+          "dropout": "0.23663261628280174",
+          "weight_decay": "0.0008727185963231925",
           "sagemaker_submit_directory": "\"s3://hymmrec-sagemaker-assets/hymmrec-train-twoheads-2026-07-20-17-12-08-418/source/sourcedir.tar.gz\"",
           "sagemaker_program": "\"train_hymmrec_twoheads.py\"",
           "sagemaker_container_log_level": "20",
@@ -1007,12 +1007,12 @@
           "ImageUri": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310",
           "ContainerArguments": [
             "--k",
-            "10",
+            "15",
             "--num-decoys",
             "99"
           ],
           "ContainerEntrypoint": [
-            "/bin/bash",
+            "python3",
             "/opt/ml/processing/input/entrypoint/evaluation-job.py"
           ]
         },
@@ -1243,7 +1243,7 @@
               "AppSpecification": {
                 "ImageUri": "763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1-cpu-py310",
                 "ContainerEntrypoint": [
-                  "/bin/bash",
+                  "python3",
                   "/opt/ml/processing/input/entrypoint/model-packaging-job.py"
                 ]
               },
@@ -1265,7 +1265,7 @@
                   "InputName": "model",
                   "AppManaged": false,
                   "S3Input": {
-                    "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/models/twoheads/",
+                    "S3Uri": "s3://hymmrec-sagemaker-assets/hymmrec/evaluation/models/twoheads/",
                     "LocalPath": "/opt/ml/processing/input/model",
                     "S3DataType": "S3Prefix",
                     "S3InputMode": "File",

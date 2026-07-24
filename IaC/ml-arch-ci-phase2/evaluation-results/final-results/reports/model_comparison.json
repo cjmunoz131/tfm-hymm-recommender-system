@@ -1,0 +1,28 @@
+{
+  "regression_score": 0.46286410120606136,
+  "twoheads_score": 0.5501696099030007,
+  "winner": "twoheads",
+  "winner_summary": {
+    "rmse_stars": 0.7685517016574585,
+    "hit_rate_at_k": 0.6033974692321026,
+    "ndcg_at_k": 0.31756899010417006,
+    "precision_at_k": 0.7381348775745328,
+    "recall_at_k": 0.7328876425160539,
+    "explainability": {
+      "category_pct": 26.051082611083984,
+      "text_pct": 59.389591217041016,
+      "image_pct": 14.559322357177734
+    },
+    "accuracy": 0.7400667599862818,
+    "f1_quality": 0.7970405196374085,
+    "precision_quality": 0.7738775510191447,
+    "recall_quality": 0.8216328653131884,
+    "bce": 1.5035575397186636
+  },
+  "scoring_weights": {
+    "ndcg": 0.4,
+    "hr": 0.25,
+    "rmse_inv": 0.2,
+    "precision": 0.15
+  }
+}

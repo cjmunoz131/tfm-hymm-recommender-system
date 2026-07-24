@@ -556,6 +556,15 @@ def main():
 
     # 1. Leer metadata del ganador
     logger.info("\n[PASO 1] Leyendo metadata del modelo ganador...")
+
+    # Extraer model.tar.gz si fue descargado como artefacto del Pipeline
+    tar_path = os.path.join(model_input, "model.tar.gz")
+    if os.path.exists(tar_path) and not os.path.exists(os.path.join(model_input, "model_metadata.json")):
+        import tarfile
+        logger.info(f"  Extrayendo {tar_path}...")
+        with tarfile.open(tar_path, "r:gz") as tar:
+            tar.extractall(path=model_input)
+
     meta_path = os.path.join(model_input, "model_metadata.json")
     with open(meta_path) as f:
         metadata = json.load(f)

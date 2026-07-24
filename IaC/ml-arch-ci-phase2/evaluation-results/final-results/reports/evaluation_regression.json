@@ -1,0 +1,74 @@
+{
+  "mode": "regression",
+  "test_pointwise": {
+    "mse": 0.03679221495985985,
+    "rmse": 0.19181296869570588,
+    "rmse_stars": 0.7672518747828235,
+    "explainability": {
+      "category_pct": 3.9958505630493164,
+      "text_pct": 66.92005920410156,
+      "image_pct": 29.08409309387207
+    },
+    "n_samples": 9287,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.7418972757610187,
+    "precision_quality": 0.7716725749262461,
+    "recall_quality": 0.8301265383934302,
+    "f1_quality": 0.799832980391544,
+    "confusion_matrix": {
+      "tp": 4789,
+      "fp": 1417,
+      "fn": 980,
+      "tn": 2101
+    }
+  },
+  "coldstart_pointwise": {
+    "mse": 0.043604977428913116,
+    "rmse": 0.2088180486186793,
+    "rmse_stars": 0.8352721944747172,
+    "explainability": {
+      "category_pct": 4.2644171714782715,
+      "text_pct": 65.96119689941406,
+      "image_pct": 29.774383544921875
+    },
+    "n_samples": 10387,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.7132954654850165,
+    "precision_quality": 0.7085950116621055,
+    "recall_quality": 0.7446728267004626,
+    "f1_quality": 0.7261860928318308,
+    "confusion_matrix": {
+      "tp": 3949,
+      "fp": 1624,
+      "fn": 1354,
+      "tn": 3460
+    }
+  },
+  "ranking_true_neg": {
+    "hit_rate_at_k": 0.4406309585716762,
+    "ndcg_at_k": 0.19975137787241365,
+    "k": 15,
+    "total_evaluations": 5769
+  },
+  "precision_recall": {
+    "precision_at_k": 0.7411226943554531,
+    "recall_at_k": 0.7467061907995961,
+    "k": 15
+  },
+  "summary": {
+    "rmse_stars": 0.7672518747828235,
+    "hit_rate_at_k": 0.4406309585716762,
+    "ndcg_at_k": 0.19975137787241365,
+    "precision_at_k": 0.7411226943554531,
+    "recall_at_k": 0.7467061907995961,
+    "explainability": {
+      "category_pct": 3.9958505630493164,
+      "text_pct": 66.92005920410156,
+      "image_pct": 29.08409309387207
+    },
+    "accuracy": 0.7418972757610187,
+    "f1_quality": 0.799832980391544,
+    "precision_quality": 0.7716725749262461,
+    "recall_quality": 0.8301265383934302
+  }
+}

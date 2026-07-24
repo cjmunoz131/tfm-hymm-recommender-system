@@ -1,0 +1,77 @@
+{
+  "mode": "twoheads",
+  "test_pointwise": {
+    "mse": 0.036916982382535934,
+    "rmse": 0.1921379254143646,
+    "rmse_stars": 0.7685517016574585,
+    "explainability": {
+      "category_pct": 26.051082611083984,
+      "text_pct": 59.389591217041016,
+      "image_pct": 14.559322357177734
+    },
+    "n_samples": 9287,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.7400667599862818,
+    "precision_quality": 0.7738775510191447,
+    "recall_quality": 0.8216328653131884,
+    "f1_quality": 0.7970405196374085,
+    "confusion_matrix": {
+      "tp": 4740,
+      "fp": 1385,
+      "fn": 1029,
+      "tn": 2133
+    },
+    "bce": 1.5035575397186636
+  },
+  "coldstart_pointwise": {
+    "mse": 0.04767121374607086,
+    "rmse": 0.21833738513152268,
+    "rmse_stars": 0.8733495405260907,
+    "explainability": {
+      "category_pct": 26.410781860351562,
+      "text_pct": 58.7422981262207,
+      "image_pct": 14.84692096710205
+    },
+    "n_samples": 10387,
+    "quality_threshold_stars": 3.5,
+    "accuracy": 0.6860498700291845,
+    "precision_quality": 0.6627869897948616,
+    "recall_quality": 0.7838959079751389,
+    "f1_quality": 0.7182721332627416,
+    "confusion_matrix": {
+      "tp": 4157,
+      "fp": 2115,
+      "fn": 1146,
+      "tn": 2969
+    },
+    "bce": 1.2091040227012022
+  },
+  "ranking_true_neg": {
+    "hit_rate_at_k": 0.6033974692321026,
+    "ndcg_at_k": 0.31756899010417006,
+    "k": 15,
+    "total_evaluations": 5769
+  },
+  "precision_recall": {
+    "precision_at_k": 0.7381348775745328,
+    "recall_at_k": 0.7328876425160539,
+    "k": 15
+  },
+  "summary": {
+    "rmse_stars": 0.7685517016574585,
+    "hit_rate_at_k": 0.6033974692321026,
+    "ndcg_at_k": 0.31756899010417006,
+    "precision_at_k": 0.7381348775745328,
+    "recall_at_k": 0.7328876425160539,
+    "explainability": {
+      "category_pct": 26.051082611083984,
+      "text_pct": 59.389591217041016,
+      "image_pct": 14.559322357177734
+    },
+    "accuracy": 0.7400667599862818,
+    "f1_quality": 0.7970405196374085,
+    "precision_quality": 0.7738775510191447,
+    "recall_quality": 0.8216328653131884,
+    "bce": 1.5035575397186636
+  }
+}

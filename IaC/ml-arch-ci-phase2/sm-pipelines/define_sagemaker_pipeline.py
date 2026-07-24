@@ -617,12 +617,12 @@ def create_step_training_regression(params, role, session, step_hpo_regression):
             "scheduler_patience": 2,
             "scheduler_factor": 0.5,
             "min_lr": 1e-6,
-            # Best HPs del HPO (hymmrec-hpo-regression-2026-07-19)
-            "lr": 0.0013591234249190794,
-            "batch_size": 128,
-            "emb_dim": 64,
-            "dropout": 0.16302531345128762,
-            "weight_decay": 2.203083422500424e-06,
+            # Best HPs del HPO (hymmrec-hpo-regression-2026-07-20)
+            "lr": 0.0002838743621574962,
+            "batch_size": 256,
+            "emb_dim": 128,
+            "dropout": 0.41655263256088393,
+            "weight_decay": 1.1497633801683068e-06,
         },
         tags=[
             {"Key": "project", "Value": "hymmrec"},
@@ -693,12 +693,12 @@ def create_step_training_twoheads(params, role, session, step_hpo_twoheads):
             "scheduler_patience": 2,
             "scheduler_factor": 0.5,
             "min_lr": 1e-6,
-            # Best HPs del HPO (hymmrec-hpo-twoheads-2026-07-19)
-            "lr": 0.0005506497164851083,
+            # Best HPs del HPO (hymmrec-hpo-twoheads-2026-07-20)
+            "lr": 0.00018431337415071667,
             "batch_size": 128,
-            "emb_dim": 64,
-            "dropout": 0.3612786014633136,
-            "weight_decay": 0.00025149521459352905,
+            "emb_dim": 128,
+            "dropout": 0.23663261628280174,
+            "weight_decay": 0.0008727185963231925,
         },
         tags=[
             {"Key": "project", "Value": "hymmrec"},
@@ -926,7 +926,7 @@ def create_step_model_packaging(params, role, session, step_register_twoheads):
                 input_name="winner",
             ),
             ProcessingInput(
-                source=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/models/twoheads/",
+                source=f"s3://{DEFAULT_PLATINUM_BUCKET}/hymmrec/evaluation/models/twoheads/",
                 destination="/opt/ml/processing/input/model",
                 input_name="model",
             ),
